@@ -1,0 +1,716 @@
+# app/schemas.py
+#
+# NOTE:
+# - Your file already works, but it had repeated imports mid-file.
+# - I am keeping ALL existing schemas as-is (same names/fields),
+#   and only making the "required places" clean + safe:
+#     1) consolidate imports at the top (no mid-file re-imports)
+#     2) make SessionUserOut explicitly include consent_verified (already present) and comment it
+#     3) keep compatibility with both Pydantic v1 (orm_mode) and v2 (from_attributes)
+#
+# IMPORTANT:
+# - No breaking changes to existing response shapes.
+# - No schema renames.
+# - No field type changes.
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, EmailStr, Field, constr
+
+
+
+# ===============================
+# USER SCHEMAS
+# ===============================
+
+class UserCreate(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str
+    dob: date
+    guardian_email: Optional[EmailStr] = None
+    role: Optional[str] = "student"
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class Message(BaseModel):
+    message: str
+
+
+# ===============================
+# ADMIN UPLOAD RESPONSE SCHEMA
+# ===============================
+
+class UploadResponse(BaseModel):
+    status: str
+    inserted: int
+
+
+class UploadQuestionsResult(BaseModel):
+    uploaded: int
+    skipped: int
+    errors: List[str] = Field(default_factory=list)
+
+
+# ===============================
+# ADMIN USER MANAGEMENT SCHEMAS
+# ===============================
+
+class RoleChange(BaseModel):
+    role: Literal["admin", "student", "editor"]
+
+
+class GuardianAssign(BaseModel):
+    guardian_email: EmailStr
+
+
+# ===============================
+# USER RESPONSE SCHEMA
+# ===============================
+
+class User(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    dob: date
+    is_minor: bool
+    guardian_email: Optional[EmailStr] = None
+    role: str
+
+    class Config:
+        # Pydantic v2
+        from_attributes = True
+        # Pydantic v1 compatibility
+        orm_mode = True
+
+
+# ===============================
+# SKILL SCHEMAS
+# ===============================
+
+class SkillCreate(BaseModel):
+    name: str
+
+
+class Skill(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# STUDENT SCHEMAS
+# ===============================
+
+class StudentCreate(BaseModel):
+    name: str
+    grade: int
+
+
+class Student(BaseModel):
+    id: int
+    name: str
+    grade: int
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# STUDENT-SKILL MAP SCHEMAS
+# ===============================
+
+class StudentSkillMapCreate(BaseModel):
+    student_id: int
+    skill_id: int
+
+
+class StudentSkillMap(BaseModel):
+    id: int
+    student_id: int
+    skill_id: int
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# CAREER CLUSTER SCHEMAS
+# ===============================
+
+class CareerClusterCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class CareerCluster(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# KEYSKILL SCHEMAS
+# ===============================
+
+class CareerSimple(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class KeySkillCreate(BaseModel):
+    name: str
+    cluster_id: int
+
+
+class KeySkill(BaseModel):
+    id: int
+    name: str
+    cluster_id: Optional[int] = None
+    careers: List[CareerSimple] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# CAREER SCHEMAS
+# ===============================
+
+class KeySkillBase(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class CareerCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    cluster_id: Optional[int] = None
+
+
+class Career(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    cluster_id: Optional[int] = None
+    keyskills: List[KeySkillBase] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# STUDENT-KEYSKILL MAP SCHEMAS
+# ===============================
+
+class StudentKeySkillMapCreate(BaseModel):
+    student_id: int
+    keyskill_id: int
+    # Optional numeric score (0–100) – can be filled by assessment logic
+    score: Optional[float] = None
+
+
+class StudentKeySkillMap(BaseModel):
+    id: int
+    student_id: int
+    keyskill_id: int
+    score: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# PAID ANALYTICS SCHEMA - (OLD) Cluster Insights
+# ===============================
+
+class ClusterInsight(BaseModel):
+    cluster_id: int
+    cluster_name: str
+    careers: List[str] = Field(default_factory=list)
+    key_skills: List[str] = Field(default_factory=list)
+    matched_skills: List[str] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# PAID ANALYTICS SCHEMAS - NEW (Weighted + Explanations + Bands)
+# ===============================
+
+class PaidClusterInsight(BaseModel):
+    cluster_id: int
+    cluster_name: str
+    score: float
+    top_keyskills: List[str] = Field(default_factory=list)
+
+    # NEW FIELD: core / supporting / auxiliary breakdown
+    # e.g. {"core": 55.0, "supporting": 30.0, "auxiliary": 15.0}
+    band_breakdown: Dict[str, float] = Field(default_factory=dict)
+
+    explanation: str
+
+
+class PaidCareerInsight(BaseModel):
+    career_id: int
+    career_name: str
+    score: float
+    top_keyskills: List[str] = Field(default_factory=list)
+    explanation: str
+
+
+class PaidAnalyticsResponse(BaseModel):
+    student_id: int
+    clusters: List[PaidClusterInsight] = Field(default_factory=list)
+    careers: List[PaidCareerInsight] = Field(default_factory=list)
+
+    # Raw score maps (useful for dashboards)
+    cluster_scores: Dict[int, float] = Field(default_factory=dict)
+    career_scores: Dict[int, float] = Field(default_factory=dict)
+    keyskill_scores: Dict[int, float] = Field(default_factory=dict)
+
+    message: Optional[str] = None
+
+
+# ===============================
+# B9 INTERNAL ORCHESTRATOR RESULT (INTERNAL USE ONLY)
+# ===============================
+
+class AnalyticsResult(BaseModel):
+    """
+    B9 return object (internal use; log-friendly).
+    This does NOT change any existing public endpoint contracts.
+    """
+    student_id: int
+    scoring_config_version: str = "v1"
+    computed_at: Optional[datetime] = None
+
+    # persistence status
+    summary_row_upserted: bool = False
+
+    # data stats
+    keyskills_found: int = 0
+
+    # robustness reporting
+    warnings: List[str] = Field(default_factory=list)
+
+    # small preview for logs/debug (keep minimal)
+    payload_preview: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# ASSESSMENT SCHEMAS
+# ===============================
+
+class AssessmentOut(BaseModel):
+    id: int
+    user_id: int
+    submitted_at: datetime
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class AssessmentResponseCreate(BaseModel):
+    question_id: str = Field(..., example="V1_Q1")
+    answer: constr(pattern=r"^[1-5]$") = Field(..., example="5")
+
+
+class AssessmentResponseOut(BaseModel):
+    question_id: str = Field(..., example="V1_Q1")
+    answer: str = Field(..., example="5")
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class AssessmentResultOut(BaseModel):
+    assessment_id: int
+    recommended_stream: Optional[str] = None
+    recommended_careers: Optional[List[Any]] = None
+    skill_tiers: Optional[Dict[str, str]] = None
+    generated_at: datetime
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+# ===============================
+# SCORECARD RESPONSE (FULL REPORT)
+# ===============================
+
+class KeySkillScore(BaseModel):
+    keyskill_id: int
+    name: str
+    score: float            # 0–100 numeric score
+    normalized: float       # 0.0–1.0
+    tier: str               # e.g., "High"
+    cluster_id: Optional[int] = None
+    cluster_name: Optional[str] = None
+
+
+class ScorecardCluster(BaseModel):
+    cluster_id: int
+    cluster_name: str
+    score: float
+    band_breakdown: Dict[str, float] = Field(default_factory=dict)
+    explanation: str
+
+
+class ScorecardCareer(BaseModel):
+    career_id: int
+    career_name: str
+    score: float
+    top_keyskills: List[str] = Field(default_factory=list)
+    explanation: str
+
+
+class ScorecardResponse(BaseModel):
+    student_id: int
+
+    # core blocks
+    clusters: List[ScorecardCluster] = Field(default_factory=list)
+    careers: List[ScorecardCareer] = Field(default_factory=list)
+    keyskills: List[KeySkillScore] = Field(default_factory=list)
+
+    # raw scoring useful for charts
+    cluster_scores: Dict[int, float] = Field(default_factory=dict)
+    career_scores: Dict[int, float] = Field(default_factory=dict)
+
+    message: Optional[str] = None
+
+
+# ===============================
+# QUESTION SCHEMA
+# ===============================
+
+class QuestionCreate(BaseModel):
+    id: str
+    question_text_en: str
+    question_text_hi: Optional[str] = None
+    question_text_ta: Optional[str] = None
+    skill_id: int
+    weight: Optional[int] = 1
+    group_id: Optional[str] = None
+    prerequisite_qid: Optional[str] = None
+
+
+class AdminQuestionCreateRequest(BaseModel):
+    # required for validator
+    assessment_version: str
+    question_id: str
+    skill_id: int
+
+    # required text fields
+    question_text_en: str
+    question_text_hi: Optional[str] = None
+    question_text_ta: Optional[str] = None
+
+    # optional DB fields (route writes these directly, validator stays DB-write-free)
+    weight: Optional[int] = 1
+    group_id: Optional[str] = None
+    prerequisite_qid: Optional[str] = None
+
+
+class AdminQuestionCreateResponse(BaseModel):
+    """
+    Structured response:
+    - status: created | error
+    - created: minimal created record details (when success)
+    - errors: structured errors (when validation fails)
+    """
+    status: str
+    created: Optional[Dict[str, Any]] = None
+    # ✅ IMPORTANT: avoid mutable default list
+    errors: List[Dict[str, str]] = Field(default_factory=list)
+
+
+# ===============================
+# ADMIN BULK QUESTION CREATION SCHEMAS (B4)
+# ===============================
+
+class AdminQuestionBulkItem(BaseModel):
+    # required for validator
+    assessment_version: str
+    question_id: str
+    skill_id: int
+
+    # required text fields
+    question_text_en: str
+    question_text_hi: Optional[str] = None
+    question_text_ta: Optional[str] = None
+
+    # optional DB fields
+    weight: Optional[int] = 1
+    group_id: Optional[str] = None
+    prerequisite_qid: Optional[str] = None
+
+
+class AdminQuestionBulkItemError(BaseModel):
+    field: str
+    message: str
+
+
+class AdminQuestionBulkErrorEntry(BaseModel):
+    # index of the item in the request array
+    index: int
+    question_id: Optional[str] = None
+    errors: List[AdminQuestionBulkItemError] = Field(default_factory=list)
+
+
+class AdminQuestionBulkResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: List[AdminQuestionBulkErrorEntry] = Field(default_factory=list)
+
+
+# ===============================
+# STUDENT RANDOM QUESTION DELIVERY SCHEMAS (B5)
+# ===============================
+
+class RandomQuestionItemOut(BaseModel):
+    question_id: str
+    skill_id: int
+    question_text: str
+
+
+class RandomQuestionsResponse(BaseModel):
+    assessment_version: str
+    count_requested: int
+    count_returned: int
+    lang: Optional[str] = None
+    lang_used: str
+    questions: List[RandomQuestionItemOut] = Field(default_factory=list)
+
+
+# ===============================
+# STUDENT LOCALIZED QUESTION LIST SCHEMAS (B6)
+# ===============================
+
+class StudentQuestionItemOut(BaseModel):
+    question_id: str = Field(..., example="V1_Q1")
+    skill_id: int = Field(..., example=1)
+    question_text: str = Field(..., example="I enjoy solving logical puzzles.")
+
+
+class StudentQuestionsResponse(BaseModel):
+    assessment_version: str = Field(..., example="v1")
+    lang: Optional[str] = Field(None, example="hi")
+    lang_used: str = Field(..., example="hi")
+    count_returned: int = Field(..., example=2)
+    questions: List[StudentQuestionItemOut] = Field(default_factory=list)
+
+
+# ============================
+# B10: Student Dashboard Schemas
+# ============================
+
+class StudentDashboardAssessmentKPIs(BaseModel):
+    total_assessments: int = 0
+    last_submitted_at: Optional[datetime] = None
+
+
+class StudentDashboardTopSkill(BaseModel):
+    skill_id: int
+    scaled_0_100: float
+    tier: Optional[int] = None
+    assessment_id: int
+
+
+class StudentDashboardKeyskillAnalytics(BaseModel):
+    # Derived from B9 JSONB snapshot; keep flexible but stable.
+    overall_keyskill_summary: Dict[str, Any] = Field(default_factory=dict)
+    distribution: Dict[str, Any] = Field(default_factory=dict)
+    top_keyskills: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class StudentDashboardResponse(BaseModel):
+    student_id: int
+    scoring_config_version: str = "v1"
+
+    assessment_kpis: StudentDashboardAssessmentKPIs
+    keyskill_analytics: Optional[StudentDashboardKeyskillAnalytics] = None
+    top_skills: List[StudentDashboardTopSkill] = Field(default_factory=list)
+
+    # UX-friendly deterministic message (e.g., "No assessments yet")
+    message: Optional[str] = None
+
+
+# ==============================
+# B11: Student Assessment History
+# ==============================
+
+class StudentAssessmentHistoryItem(BaseModel):
+    assessment_id: int
+    submitted_at: datetime
+    assessment_version: Optional[str] = None
+    scoring_config_version: str = "v1"
+    status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class StudentAssessmentHistoryResponse(BaseModel):
+    student_id: int
+    total_assessments: int
+    assessments: List[StudentAssessmentHistoryItem]
+    message: Optional[str] = None
+
+
+# =========================
+# B12 — Student Results History (Read-only)
+# =========================
+
+class StudentResultHistoryItem(BaseModel):
+    result_id: int
+    assessment_id: Optional[int] = None
+    generated_at: datetime
+
+    assessment_version: Optional[str] = None
+    scoring_config_version: str = Field(default="v1")
+
+    recommended_stream: Optional[str] = None
+    top_careers: Optional[List[Any]] = None  # keep flexible (strings or small dicts)
+    status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
+
+
+class StudentResultHistoryResponse(BaseModel):
+    student_id: int
+    total_results: int
+    results: List[StudentResultHistoryItem]
+    message: Optional[str] = None
+
+
+# =========================================================
+# B13: Consent verification (guardian-facing, compliance)
+# =========================================================
+
+class ConsentVerifyRequest(BaseModel):
+    """
+    Input contract:
+    - token: self-contained consent JWT
+    - otp: user-provided OTP (plain text), validated via SHA-256 hash match
+    """
+    token: str = Field(..., min_length=10)
+    otp: str = Field(..., min_length=1, max_length=32)
+
+
+class ConsentVerifyResponse(BaseModel):
+    """
+    Output contract:
+    Always returns verification status, and echoes token identity fields.
+    """
+    verified: bool
+    status: str  # "verified" | "rejected"
+    message: Optional[str] = None
+
+    student_id: int
+    student_user_id: int
+    guardian_email: EmailStr
+
+    verified_at: Optional[datetime] = None
+    expires_at: datetime
+
+class ConsentDevPayload(BaseModel):
+    token: str
+    otp: str
+
+    
+class ConsentRequestResponse(BaseModel):
+    consent_id: str
+    delivery: str = "email"
+    expires_at: datetime
+    dev: Optional[ConsentDevPayload] = None
+
+    class Config:
+        from_attributes = True
+    
+
+# ----------------------------
+# B14: Student Report Response
+# ----------------------------
+
+class ReportResponse(BaseModel):
+    student_id: int
+    scoring_config_version: str
+    report_ready: bool
+    report_format: str  # "json" or "pdf_placeholder"
+    generated_at: datetime
+    pdf_download_url: Optional[str] = None
+    message: Optional[str] = None
+    report_payload: Optional[Dict[str, Any]] = None
+
+
+# ----------------------------
+# B15: Bootstrap Frontend Session Response
+# ----------------------------
+
+class StudentProfileOut(BaseModel):
+    student_id: int
+    name: str
+    grade: int
+
+
+class SessionUserOut(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
+    role: str
+    is_minor: bool
+    guardian_email: Optional[EmailStr] = None
+    student_profile: Optional[StudentProfileOut] = None
+
+    # ✅ IMPORTANT:
+    # This flag is consumed by frontend routing logic.
+    # It MUST be derived from consent_logs in /v1/auth/me (do NOT store on user table).
+    consent_verified: bool = False
+
+    message: Optional[str] = None

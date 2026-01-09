@@ -1,0 +1,56 @@
+# --- Secrets ---
+.env
+backend/.env
+*.env
+
+# --- Python / venv ---
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Local databases / artifacts ---
+*.db
+*.sqlite
+
+# --- Docker / Postgres local volumes (DO NOT COMMIT) ---
+pgdata/
+pgdata_backup/
+
+# --- Excel temp files ---
+~$*.xlsx
+~$*.xls
+
+# --- IDE ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+
+# --- Local docs / spreadsheets (keep only if you truly want them in git) ---
+*.xlsx
+*.xls
+*.docx
+
+# --- Test artifacts / reports ---
+frontend/playwright-report/
+frontend/test-results/
+**/playwright-report/
+**/test-results/
+
+# --- Generated outputs / logs ---
+full_output.txt
+**/full_output.txt
+*.log
+
+# --- Snapshots you generate locally ---
+*snapshot*.txt
+careerplatform_full_snapshot*.txt
+backend_snapshot*.txt
+
+# --- Misc temp files ---
+backend/New Microsoft Excel Worksheet.xlsx
+frontend/New Text Document.txt
+frontend/e2e/New Text Document.txt
