@@ -1,30 +1,51 @@
 # backend/tests/conftest.py
 
+import os
 import pytest
+from datetime import date
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import date
+from sqlalchemy import create_engine, text
 
-# 1) point at a disposable SQLite DB
-SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(
-    SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+# -----------------------------------------------------------------------------
+# 1) Choose DB for tests
+# -----------------------------------------------------------------------------
+# - If TEST_DATABASE_URL is set (Docker/Postgres), use that (recommended)
+# - Otherwise fall back to SQLite (note: JSONB models won't work on SQLite)
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
+
+if TEST_DATABASE_URL:
+    engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+else:
+    SQLALCHEMY_TEST_DATABASE_URL = "sqlite:///./test.db"
+    engine = create_engine(
+        SQLALCHEMY_TEST_DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 1.a) override the app's SessionLocal so ALL sessions use SQLite
+# -----------------------------------------------------------------------------
+# 1.a) Override the app's SessionLocal so ALL app DB sessions use the test DB
+# -----------------------------------------------------------------------------
+# This ensures that when the FastAPI app creates DB sessions, it uses the same
+# TestingSessionLocal (Postgres via TEST_DATABASE_URL or SQLite fallback).
 import app.database as _database
 _database.SessionLocal = TestingSessionLocal
 
-# 2) bring in your real app and Base
+# -----------------------------------------------------------------------------
+# 2) Import the real FastAPI app and SQLAlchemy Base
+# -----------------------------------------------------------------------------
 from app.main import app
 from app.database import Base
 from app.deps import get_db
 from app.models import User
 from app.auth.auth import get_password_hash
 
-# 3) override the FastAPI get_db dependency
+# -----------------------------------------------------------------------------
+# 3) Override FastAPI's get_db dependency to use the test DB session
+# -----------------------------------------------------------------------------
 def override_get_db():
     db = TestingSessionLocal()
     try:
@@ -34,26 +55,43 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
-# 4) create/drop tables once per test session
+def _reset_db(db):
+    """
+    Reset the database to a clean state for tests.
+
+    Using TRUNCATE ... CASCADE avoids foreign key errors (e.g., assessments referencing users).
+    This is safe for a dedicated test database.
+    """
+    db.execute(text("TRUNCATE TABLE assessments, assessment_results, users RESTART IDENTITY CASCADE;"))
+    db.commit()
+
+# -----------------------------------------------------------------------------
+# 4) Create/drop tables once per test session
+# -----------------------------------------------------------------------------
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
+    # Clean slate (useful when re-running tests against Postgres)
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
 
-# 5) provide a TestClient for tests
+# -----------------------------------------------------------------------------
+# 5) Provide a TestClient for API tests
+# -----------------------------------------------------------------------------
 @pytest.fixture
 def client():
     return TestClient(app)
 
-# 6) seed an admin user and return its JWT
+# -----------------------------------------------------------------------------
+# 6) Seed an admin user and return its JWT token
+# -----------------------------------------------------------------------------
 @pytest.fixture
 def admin_token(client):
     db = TestingSessionLocal()
 
-    # wipe out any existing users so we never hit UNIQUE collisions
-    db.query(User).delete()
-    db.commit()
+    # Wipe out any existing users so we never hit UNIQUE collisions
+    _reset_db(db)
 
     admin = User(
         full_name="Admin User",
@@ -74,31 +112,36 @@ def admin_token(client):
     assert resp.status_code == 200, f"Login failed: {resp.status_code} {resp.text}"
     return resp.json()["access_token"]
 
-# 7) seed a student user and return its JWT
+# -----------------------------------------------------------------------------
+# 7) Seed a student user and return its JWT token
+# -----------------------------------------------------------------------------
 @pytest.fixture
 def student_token(client):
-    # clear out users so test starts clean
+    # Clear out users so test starts clean
     db = TestingSessionLocal()
-    db.query(User).delete()
-    db.commit()
+    _reset_db(db)
     db.close()
 
-    # sign up a new student via the API
+    # Sign up a new student via the API
     signup_resp = client.post(
         "/v1/auth/signup",
         json={
             "full_name": "Test Student",
             "email": "student@example.com",
             "password": "studentpass123",
-            "dob": "2006-01-01"
+            "dob": "2006-01-01",
         },
     )
-    assert signup_resp.status_code == 201, f"Signup failed: {signup_resp.status_code} {signup_resp.text}"
+    assert signup_resp.status_code == 201, (
+        f"Signup failed: {signup_resp.status_code} {signup_resp.text}"
+    )
 
-    # log in to get token
+    # Log in to get token
     login_resp = client.post(
         "/v1/auth/login",
         json={"email": "student@example.com", "password": "studentpass123"},
     )
-    assert login_resp.status_code == 200, f"Login failed: {login_resp.status_code} {login_resp.text}"
+    assert login_resp.status_code == 200, (
+        f"Login failed: {login_resp.status_code} {login_resp.text}"
+    )
     return login_resp.json()["access_token"]
