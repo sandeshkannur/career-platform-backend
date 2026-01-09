@@ -9,6 +9,20 @@ Write-Host "`n[Docker] Checking Docker daemon..."
 docker info | Out-Null
 Write-Host "✅ Docker is running."
 
+Write-Host "`n[Static] Guardrail: blocking deprecated Pydantic Field(..., example=...) usage..."
+
+# Scan only repo code (avoid .venv/site-packages)
+$matches = Get-ChildItem backend/app -Recurse -File -Include *.py |
+  Select-String -Pattern 'Field\s*\(.*\bexample\s*='
+
+if ($matches) {
+  Write-Host "`n❌ Found deprecated 'Field(..., example=...)' usage. Replace with json_schema_extra={'example': ...}." -ForegroundColor Red
+  $matches | ForEach-Object { Write-Host ("  {0}:{1}: {2}" -f $_.Path, $_.LineNumber, $_.Line.Trim()) }
+  throw "Static guardrail failed: deprecated Pydantic Field example= found."
+}
+
+Write-Host "✅ Static guardrail passed."
+
 Write-Host "`n[Backend] Ensuring DB is up..."
 docker compose up -d db
 
