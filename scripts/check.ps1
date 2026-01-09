@@ -23,6 +23,41 @@ if ($matches) {
 
 Write-Host "✅ Static guardrail passed."
 
+Write-Host "`n[Schema] OpenAPI generation (must be warning-free)..."
+
+# Run OpenAPI generation inside the backend container and capture output (stdout+stderr)
+$openapiOut = cmd /c 'docker compose run --rm backend python -c "import warnings; warnings.simplefilter(''default''); from app.main import app; app.openapi(); print(''OPENAPI_OK'')" 2>&1'
+$openapiText = ($openapiOut | Out-String)
+# Fail on warning patterns (keep this strict; INFO/DEBUG logs are allowed)
+$warningPatterns = @(
+  "PydanticDeprecatedSince",
+  "DeprecationWarning",
+  "Valid config keys have changed in V2",
+  "UserWarning: Valid config keys have changed in V2"
+)
+
+$foundWarnings = $false
+foreach ($p in $warningPatterns) {
+  if ($openapiText -like "*$p*") {
+    $foundWarnings = $true
+    break
+  }
+}
+
+if ($foundWarnings) {
+  Write-Host "`n❌ OpenAPI generation emitted warnings. Fix schema/config warnings before merging." -ForegroundColor Red
+  Write-Host $openapiText
+  throw "Schema lint failed: OpenAPI generation warnings detected."
+}
+
+if (-not $openapiText.Contains("OPENAPI_OK")) {
+  Write-Host "`n❌ OpenAPI generation did not complete successfully." -ForegroundColor Red
+  Write-Host $openapiText
+  throw "Schema lint failed: OPENAPI_OK sentinel not found."
+}
+
+Write-Host "✅ OpenAPI generation is warning-free."
+
 Write-Host "`n[Backend] Ensuring DB is up..."
 docker compose up -d db
 

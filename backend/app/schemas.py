@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, constr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr
 
 
 
@@ -89,11 +89,7 @@ class User(BaseModel):
     guardian_email: Optional[EmailStr] = None
     role: str
 
-    class Config:
-        # Pydantic v2
-        from_attributes = True
-        # Pydantic v1 compatibility
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -108,9 +104,7 @@ class Skill(BaseModel):
     id: int
     name: str
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -127,9 +121,7 @@ class Student(BaseModel):
     name: str
     grade: int
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -146,9 +138,7 @@ class StudentSkillMap(BaseModel):
     student_id: int
     skill_id: int
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -165,9 +155,7 @@ class CareerCluster(BaseModel):
     name: str
     description: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -179,9 +167,7 @@ class CareerSimple(BaseModel):
     title: str
     description: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class KeySkillCreate(BaseModel):
@@ -195,9 +181,7 @@ class KeySkill(BaseModel):
     cluster_id: Optional[int] = None
     careers: List[CareerSimple] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -208,9 +192,7 @@ class KeySkillBase(BaseModel):
     id: int
     name: str
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CareerCreate(BaseModel):
@@ -226,9 +208,7 @@ class Career(BaseModel):
     cluster_id: Optional[int] = None
     keyskills: List[KeySkillBase] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -248,9 +228,7 @@ class StudentKeySkillMap(BaseModel):
     keyskill_id: int
     score: Optional[float] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -264,9 +242,7 @@ class ClusterInsight(BaseModel):
     key_skills: List[str] = Field(default_factory=list)
     matched_skills: List[str] = Field(default_factory=list)
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -332,9 +308,7 @@ class AnalyticsResult(BaseModel):
     # small preview for logs/debug (keep minimal)
     payload_preview: Optional[Dict[str, Any]] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -346,9 +320,7 @@ class AssessmentOut(BaseModel):
     user_id: int
     submitted_at: datetime
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AssessmentResponseCreate(BaseModel):
@@ -373,9 +345,7 @@ class AssessmentResponseOut(BaseModel):
         json_schema_extra={"example": "5"},
     )
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 class AssessmentResultOut(BaseModel):
     assessment_id: int
     recommended_stream: Optional[str] = None
@@ -383,9 +353,7 @@ class AssessmentResultOut(BaseModel):
     skill_tiers: Optional[Dict[str, str]] = None
     generated_at: datetime
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ===============================
@@ -600,9 +568,7 @@ class StudentAssessmentHistoryItem(BaseModel):
     scoring_config_version: str = "v1"
     status: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentAssessmentHistoryResponse(BaseModel):
@@ -628,9 +594,7 @@ class StudentResultHistoryItem(BaseModel):
     top_careers: Optional[List[Any]] = None  # keep flexible (strings or small dicts)
     status: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StudentResultHistoryResponse(BaseModel):
@@ -681,8 +645,7 @@ class ConsentRequestResponse(BaseModel):
     expires_at: datetime
     dev: Optional[ConsentDevPayload] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
     
 
 # ----------------------------
