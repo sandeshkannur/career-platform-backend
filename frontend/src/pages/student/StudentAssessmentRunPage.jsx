@@ -1,60 +1,88 @@
-// src/pages/student/StudentAssessmentRunPage.jsx
+﻿// src/pages/student/StudentAssessmentRunPage.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 
+import { getQuestionPool } from "../../api/questions";
+import { deterministicPick } from "../../lib/deterministicPick";
+
 const DRAFT_PREFIX = "__ASSESSMENT_RUN_DRAFT_V1__";
+const QUESTION_COUNT = 75;
 
 /**
- * Assessment Runner — Step 2 (UI-only)
- * - Deterministic question set (local)
+ * Assessment Runner
+ * - Loads question pool from backend
+ * - Deterministically selects 75 questions based on attemptId
  * - One question per screen (mobile-friendly by default)
- * - Next disabled until answered
- * - Save stores progress in sessionStorage
- * - Last question -> /student/assessment/submit/:assessmentId
- *
- * Step 3+ will wire this to backend question payloads + persistence.
+ * - Save stores progress in sessionStorage (draft only; PR4 will align model)
  */
 export default function StudentAssessmentRunPage() {
   const navigate = useNavigate();
-  const { assessmentId } = useParams();
-
-  // Deterministic local question bank (placeholder until backend wiring)
-  const QUESTIONS = useMemo(
-    () => [
-      {
-        id: "q1",
-        text: "I enjoy solving challenging problems.",
-        options: ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"],
-      },
-      {
-        id: "q2",
-        text: "I prefer working with people over working alone.",
-        options: ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"],
-      },
-      {
-        id: "q3",
-        text: "I like learning new tools or skills quickly.",
-        options: ["Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"],
-      },
-    ],
-    []
-  );
+  const { attemptId } = useParams();
 
   const storageKey = useMemo(() => {
-    // Keep deterministic even if assessmentId missing
-    return `${DRAFT_PREFIX}:${assessmentId || "unknown"}`;
-  }, [assessmentId]);
+    // Keep deterministic even if attemptId missing
+    return `${DRAFT_PREFIX}:${attemptId || "unknown"}`;
+  }, [attemptId]);
 
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState({}); // { [questionId]: optionText }
   const [loaded, setLoaded] = useState(false);
 
+  const [pool, setPool] = useState(null);
+  const [poolError, setPoolError] = useState(null);
+
+  // Load question pool
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPool() {
+      setPool(null);
+      setPoolError(null);
+
+      try {
+        const data = await getQuestionPool();
+
+        // Backend contract can be either:
+        // - { questions: [...] }
+        // - [...]
+        const questions = Array.isArray(data) ? data : data?.questions;
+
+        if (!Array.isArray(questions)) {
+          throw new Error("Invalid question pool payload (expected array).");
+        }
+
+        if (!cancelled) setPool(questions);
+      } catch (e) {
+        if (!cancelled) setPoolError(e);
+      }
+    }
+
+    loadPool();
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId]);
+
+  // Deterministically select questions
+  const QUESTIONS = useMemo(() => {
+    if (!Array.isArray(pool)) return [];
+
+    const getKey = (q) => q?.question_id ?? q?.id ?? q?.questionId ?? "";
+
+    return deterministicPick({
+      seed: attemptId || "unknown",
+      items: pool,
+      count: QUESTION_COUNT,
+      getKey,
+    });
+  }, [pool, attemptId]);
+
   const current = QUESTIONS[index];
 
-  // Load draft (if any)
+  // Load draft (if any) — keeps existing behavior for now
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(storageKey);
@@ -65,22 +93,34 @@ export default function StudentAssessmentRunPage() {
       const parsed = JSON.parse(raw);
       const safeIndex =
         typeof parsed?.index === "number" && parsed.index >= 0 ? parsed.index : 0;
-      const safeAnswers = parsed?.answers && typeof parsed.answers === "object" ? parsed.answers : {};
+      const safeAnswers =
+        parsed?.answers && typeof parsed.answers === "object" ? parsed.answers : {};
 
-      setIndex(Math.min(safeIndex, QUESTIONS.length - 1));
+      setIndex(Math.min(safeIndex, Math.max(0, QUESTIONS.length - 1)));
       setAnswers(safeAnswers);
       setLoaded(true);
     } catch {
       setLoaded(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
+  }, [storageKey, QUESTIONS.length]);
 
-  const selected = current ? answers[current.id] : null;
+  // Helpers for rendering without mutating backend payload
+  const currentId =
+    current?.question_id ?? current?.id ?? current?.questionId ?? null;
+
+  const currentText =
+    current?.text ?? current?.question_text ?? current?.prompt ?? "";
+
+  const currentOptions =
+    current?.options ?? current?.choices ?? current?.answers ?? [];
+
+  const selected = currentId ? answers[currentId] : null;
   const isLast = index === QUESTIONS.length - 1;
 
   function choose(option) {
-    setAnswers((a) => ({ ...a, [current.id]: option }));
+    if (!currentId) return;
+    setAnswers((a) => ({ ...a, [currentId]: option }));
   }
 
   function handleBack() {
@@ -88,7 +128,6 @@ export default function StudentAssessmentRunPage() {
       setIndex((i) => i - 1);
       return;
     }
-    // Back from first question -> intro page
     navigate("/student/assessment", { replace: true });
   }
 
@@ -117,27 +156,63 @@ export default function StudentAssessmentRunPage() {
     }
 
     // Last question -> submit page (existing route pattern)
-    navigate(`/student/assessment/submit/${assessmentId || "123"}`);
+    navigate(`/student/assessment/submit/${attemptId || "unknown"}`);
   }
 
-  if (!loaded) {
+  // Wait for both: local draft load + backend pool load attempt
+  const stillLoading = !loaded || (!pool && !poolError);
+
+  if (stillLoading) {
     return (
       <SkeletonPage
         title="Assessment in Progress"
         subtitle="Loading your assessment…"
-        actions={<Button variant="secondary" onClick={() => navigate("/student/assessment")}>Back</Button>}
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
+            Back
+          </Button>
+        }
       >
         <p>Loading…</p>
       </SkeletonPage>
     );
   }
 
-  if (!current) {
+  if (poolError) {
+    return (
+      <SkeletonPage
+        title="Assessment in Progress"
+        subtitle="Unable to load questions."
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
+            Back
+          </Button>
+        }
+      >
+        <p>{poolError?.message || "Failed to load question pool."}</p>
+      </SkeletonPage>
+    );
+  }
+
+  if (!current || !currentId || !Array.isArray(currentOptions)) {
     return (
       <SkeletonPage
         title="Assessment in Progress"
         subtitle="No questions available."
-        actions={<Button variant="secondary" onClick={() => navigate("/student/assessment")}>Back</Button>}
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
+            Back
+          </Button>
+        }
       >
         <p>Unable to load questions.</p>
       </SkeletonPage>
@@ -166,21 +241,29 @@ export default function StudentAssessmentRunPage() {
         {/* Progress */}
         <div style={{ fontSize: 12, opacity: 0.75 }}>
           Question {index + 1} of {QUESTIONS.length}
-          {assessmentId ? (
-            <span style={{ marginLeft: 8, opacity: 0.6 }}>• Assessment ID: {assessmentId}</span>
+          {attemptId ? (
+            <span style={{ marginLeft: 8, opacity: 0.6 }}>
+              • Attempt ID: {attemptId}
+            </span>
           ) : null}
+        </div>
+
+        {/* Determinism metadata (auditable) */}
+        <div style={{ fontSize: 12, opacity: 0.7 }}>
+          Deterministic selection: seed = attemptId, pick = {QUESTION_COUNT} (or
+          fewer if pool smaller)
         </div>
 
         {/* Question */}
         <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>{current.text}</div>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}>{currentText}</div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            {current.options.map((opt) => {
+            {currentOptions.map((opt) => {
               const active = selected === opt;
               return (
                 <button
-                  key={opt}
+                  key={String(opt)}
                   type="button"
                   onClick={() => choose(opt)}
                   style={{
@@ -193,7 +276,7 @@ export default function StudentAssessmentRunPage() {
                   }}
                   aria-pressed={active}
                 >
-                  {opt}
+                  {String(opt)}
                 </button>
               );
             })}
@@ -217,8 +300,8 @@ export default function StudentAssessmentRunPage() {
         </div>
 
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Note: This runner is UI-only (local questions + local save). Backend question loading and
-          persistence will be wired next.
+          Note: Scoring remains backend-owned. This runner only loads questions,
+          selects deterministically, and stores a local draft.
         </div>
       </div>
     </SkeletonPage>
