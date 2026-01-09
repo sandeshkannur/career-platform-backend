@@ -1,21 +1,85 @@
 // src/pages/student/StudentAssessmentIntroPage.jsx
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 
+import { startAssessment } from "../../api/assessments";
+
 /**
- * Assessment UX — Step 1 (UI-only)
- * - Clear expectations + deterministic flow
- * - No backend wiring yet
- * - Start routes to the existing runner path with a placeholder id
+ * Assessment UX — Step 2 (wired)
+ * - Start calls backend to create an assessment run
+ * - Snapshot is persisted locally for Resume
+ * - Resume uses the last snapshot (if present)
+ *
+ * NOTE:
+ * - Storage keys will be centralized later (PR8).
+ * - Keep diffs minimal and deterministic.
  */
+const STORAGE_KEY_LAST_RUN = "cp:last_assessment_run:v1";
+
+function readLastRunSnapshot() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LAST_RUN);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.assessment_id) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastRunSnapshot(snapshot) {
+  try {
+    localStorage.setItem(STORAGE_KEY_LAST_RUN, JSON.stringify(snapshot));
+  } catch {
+    // ignore storage failures (private mode / quotas) — Start still works
+  }
+}
+
 export default function StudentAssessmentIntroPage() {
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
 
-  // UI-only placeholder until Step 2 wiring (create/resume assessment id)
-  const placeholderAssessmentId = useMemo(() => "123", []);
+  const lastRun = useMemo(() => readLastRunSnapshot(), []);
+
+  const goToRun = useCallback(
+    (assessmentId) => {
+      navigate(`/student/assessment/run/${assessmentId}`);
+    },
+    [navigate]
+  );
+
+  const handleStart = useCallback(async () => {
+    setBusy(true);
+    try {
+      const data = await startAssessment();
+      const assessmentId = data?.assessment_id;
+
+      if (!assessmentId) {
+        throw new Error("assessment_id missing from response");
+      }
+
+      // Persist a minimal snapshot for resume.
+      // Backend may return more fields; we keep them as-is.
+      writeLastRunSnapshot({ ...data, assessment_id: assessmentId });
+
+      goToRun(assessmentId);
+    } finally {
+      setBusy(false);
+    }
+  }, [goToRun]);
+
+  const handleResume = useCallback(() => {
+    if (lastRun?.assessment_id) {
+      goToRun(lastRun.assessment_id);
+      return;
+    }
+    // If nothing to resume, behave like Start (no extra UX yet).
+    handleStart();
+  }, [goToRun, handleStart, lastRun]);
 
   return (
     <SkeletonPage
@@ -23,16 +87,11 @@ export default function StudentAssessmentIntroPage() {
       subtitle="Understand your strengths, preferences, and aptitude."
       actions={
         <>
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/student/assessment/run/${placeholderAssessmentId}`)}
-          >
+          <Button variant="secondary" disabled={busy} onClick={handleResume}>
             Resume
           </Button>
-          <Button
-            onClick={() => navigate(`/student/assessment/run/${placeholderAssessmentId}`)}
-          >
-            Start Assessment
+          <Button disabled={busy} onClick={handleStart}>
+            {busy ? "Starting..." : "Start Assessment"}
           </Button>
         </>
       }
@@ -61,8 +120,8 @@ export default function StudentAssessmentIntroPage() {
         </div>
 
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Note: Step 1 uses a placeholder assessment id. Next step will create/resume an
-          assessment using backend APIs.
+          Note: Start creates a real assessment id via backend. Resume uses the last saved
+          snapshot.
         </div>
       </div>
     </SkeletonPage>
