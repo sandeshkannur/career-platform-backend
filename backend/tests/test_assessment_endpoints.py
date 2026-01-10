@@ -61,11 +61,8 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
     db.refresh(skill)
 
     # 2) Seed real questions linked to the skill
-    # IMPORTANT:
-    # The questions table enforces NOT NULL on "assessment_version".
-    # We also populate question text fields to keep the seed data realistic.
     q1 = models.Question(
-        id="Q1",
+        id=1,
         assessment_version="v1",
         question_text_en="Test question 1 (EN)",
         question_text_hi="Test question 1 (HI)",
@@ -74,7 +71,7 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
         weight=1,
     )
     q2 = models.Question(
-        id="Q2",
+        id=2,
         assessment_version="v1",
         question_text_en="Test question 2 (EN)",
         question_text_hi="Test question 2 (HI)",
@@ -86,7 +83,6 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
     db.commit()
 
     # 3) Seed an assessment directly (fast setup)
-    # This must match the student/user context used by the scoring pipeline.
     ass = models.Assessment(user_id=1)
     db.add(ass)
     db.commit()
@@ -94,11 +90,9 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
     db.close()
 
     # 4) Submit responses
-    # IMPORTANT:
-    # The API expects "answer" to match the pattern ^[1-5]$ (rating as a string).
     payload = [
-        {"question_id": "Q1", "answer": "1"},
-        {"question_id": "Q2", "answer": "5"},
+    {"question_id": "1", "answer": "1"},
+    {"question_id": "2", "answer": "5"},
     ]
     resp1 = client.post(
         f"/v1/assessments/{ass.id}/responses",
@@ -106,11 +100,10 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
         json=payload,
     )
 
-    # If this fails, show the response body to pinpoint validation issues.
     assert resp1.status_code == status.HTTP_200_OK, resp1.text
     body1 = resp1.json()
     assert isinstance(body1, list)
-    assert body1[0]["question_id"] == "Q1"
+    assert body1[0]["question_id"] == "1"
     assert body1[0]["answer"] == "1"
 
     # 5) Trigger result generation

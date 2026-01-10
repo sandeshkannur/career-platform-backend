@@ -24,8 +24,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB  # ✅ for JSONB columns
+from sqlalchemy import JSON
 
 from .database import Base
+
+JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 
 # =========================================================
@@ -218,7 +221,7 @@ class Question(Base):
     """
     __tablename__ = "questions"
 
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     assessment_version = Column(String, nullable=False, index=True)
 
     question_text_en = Column(String, nullable=False)
@@ -230,7 +233,7 @@ class Question(Base):
     weight = Column(Integer, default=1)
     group_id = Column(String)
 
-    prerequisite_qid = Column(String, ForeignKey("questions.id"), nullable=True)
+    prerequisite_qid = Column(Integer, ForeignKey("questions.id"), nullable=True)
 
     skill = relationship("Skill", backref="questions")
     prerequisite = relationship("Question", remote_side=[id], backref="dependents")
@@ -279,11 +282,11 @@ class AssessmentResult(Base):
     recommended_stream = Column(String, nullable=True)
 
     # Store careers as JSON (list or dict) to avoid stringifying
-    recommended_careers = Column(JSONB, nullable=True)
+    recommended_careers = Column(JSON_TYPE, nullable=True)
 
     # per-skill tiers/levels produced by scoring/analytics
     # Example: {"Creativity": "Intermediate", "Numerical Reasoning": "Advanced"}
-    skill_tiers = Column(JSONB, nullable=True)
+    skill_tiers = Column(JSON_TYPE, nullable=True)
 
     generated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -349,7 +352,7 @@ class StudentAnalyticsSummary(Base):
     student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     scoring_config_version = Column(String, nullable=False, default="v1", index=True)
 
-    payload_json = Column(JSONB, nullable=False)
+    payload_json = Column(JSON_TYPE, nullable=False)
     computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

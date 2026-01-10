@@ -42,6 +42,7 @@ from app.database import Base
 from app.deps import get_db
 from app.models import User
 from app.auth.auth import get_password_hash
+from sqlalchemy import text
 
 # -----------------------------------------------------------------------------
 # 3) Override FastAPI's get_db dependency to use the test DB session
@@ -56,13 +57,24 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 def _reset_db(db):
-    """
-    Reset the database to a clean state for tests.
+    dialect = db.get_bind().dialect.name  # "postgresql" or "sqlite"
 
-    Using TRUNCATE ... CASCADE avoids foreign key errors (e.g., assessments referencing users).
-    This is safe for a dedicated test database.
-    """
-    db.execute(text("TRUNCATE TABLE assessments, assessment_results, users RESTART IDENTITY CASCADE;"))
+    if dialect == "postgresql":
+        db.execute(text("TRUNCATE TABLE assessments, assessment_results, users RESTART IDENTITY CASCADE;"))
+    else:
+        # SQLite: TRUNCATE not supported; use DELETE
+        # Order matters if FK constraints are enforced.
+        db.execute(text("DELETE FROM assessment_results;"))
+        db.execute(text("DELETE FROM assessments;"))
+        db.execute(text("DELETE FROM users;"))
+
+        # Optional: reset autoincrement counters in SQLite
+        # (only works if sqlite_sequence exists)
+        try:
+            db.execute(text("DELETE FROM sqlite_sequence WHERE name IN ('assessments','assessment_results','users');"))
+        except Exception:
+            pass
+
     db.commit()
 
 # -----------------------------------------------------------------------------

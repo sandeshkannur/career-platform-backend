@@ -5,8 +5,10 @@ from app import models
 
 SCORING_CONFIG_VERSION = "v1"
 
+
 class EmptyResponsesError(Exception):
     pass
+
 
 def compute_and_persist_skill_scores(
     db: Session,
@@ -23,20 +25,45 @@ def compute_and_persist_skill_scores(
     if not responses:
         raise EmptyResponsesError("No responses found for this assessment.")
 
-    qids = [qid for (qid, _) in responses]
+    # --- Step 7.7 FIX: normalize question_id to int inside scoring logic ---
+    normalized_responses = []
+    qids = []
+
+    for raw_qid, ans_str in responses:
+        try:
+            qid = int(raw_qid)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid question_id (must be int-like): {raw_qid!r}")
+
+        qids.append(qid)
+        normalized_responses.append((qid, ans_str))
+    # --- end Step 7.7 FIX ---
+    unique_qids = sorted(set(qids))
 
     # 2) Load question -> skill mapping (and weight if you want)
     qrows = db.execute(
         select(models.Question.id, models.Question.skill_id, models.Question.weight)
-        .where(models.Question.id.in_(qids))
+        .where(models.Question.id.in_(unique_qids))
     ).all()
 
     qmap = {qid: (skill_id, weight or 1) for (qid, skill_id, weight) in qrows}
-
+    # TEMP DEBUG (remove after fix)
+    if unique_qids:
+        sample_qid = unique_qids[0]
+        sample_key = next(iter(qmap.keys())) if qmap else None
+        print(f"[SCORING DEBUG] sample_qid={sample_qid} type={type(sample_qid)}; "
+              f"sample_qmap_key={sample_key} type={type(sample_key)}; "
+              f"qmap_keys_count={len(qmap)} unique_qids_count={len(unique_qids)}")
+    missing = set(unique_qids) - set(qmap.keys())
+    if missing:
+        raise ValueError(
+            f"Question lookup returned no rows for ids={sorted(missing)} "
+            f"(assessment_id={assessment_id})."
+        )
     # 3) Aggregate per skill
     agg = {}  # skill_id -> {"raw_total":..., "count":...}
 
-    for qid, ans_str in responses:
+    for qid, ans_str in normalized_responses:
         if qid not in qmap:
             # Data integrity issue: response points to unknown question
             # v1 recommendation: fail fast
@@ -87,16 +114,18 @@ def compute_and_persist_skill_scores(
             existing.scaled_0_100 = scaled_0_100
             existing.computed_at = datetime.utcnow()
         else:
-            db.add(models.StudentSkillScore(
-                assessment_id=assessment_id,
-                student_id=student_id,
-                scoring_config_version=scoring_config_version,
-                skill_id=skill_id,
-                raw_total=raw_total,
-                question_count=count,
-                avg_raw=avg_raw,
-                scaled_0_100=scaled_0_100,
-            ))
+            db.add(
+                models.StudentSkillScore(
+                    assessment_id=assessment_id,
+                    student_id=student_id,
+                    scoring_config_version=scoring_config_version,
+                    skill_id=skill_id,
+                    raw_total=raw_total,
+                    question_count=count,
+                    avg_raw=avg_raw,
+                    scaled_0_100=scaled_0_100,
+                )
+            )
 
     db.commit()
 
@@ -109,8 +138,11 @@ def compute_and_persist_skill_scores(
                 "raw_total": agg[skill_id]["raw_total"],
                 "question_count": agg[skill_id]["count"],
                 "avg_raw": (agg[skill_id]["raw_total"] / agg[skill_id]["count"]),
-                "scaled_0_100": ((agg[skill_id]["raw_total"] / agg[skill_id]["count"] - 1.0) / 4.0) * 100.0,
+                "scaled_0_100": (
+                    ((agg[skill_id]["raw_total"] / agg[skill_id]["count"] - 1.0) / 4.0)
+                    * 100.0
+                ),
             }
             for skill_id in agg
-        }
+        },
     }

@@ -99,7 +99,7 @@ def get_random_questions(
 
         questions_out.append(
             RandomQuestionItemOut(
-                question_id=q.id,
+                question_id=str(q.id),
                 skill_id=q.skill_id,
                 question_text=text_in_lang,
             )
