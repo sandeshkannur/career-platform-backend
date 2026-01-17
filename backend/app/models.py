@@ -308,6 +308,9 @@ class Assessment(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    assessment_version = Column(String(32), nullable=False, default="v1", index=True)
+    scoring_config_version = Column(String(32), nullable=False, default="v1", index=True)
+
     responses = relationship("AssessmentResponse", back_populates="assessment")
     result = relationship("AssessmentResult", uselist=False, back_populates="assessment")
 

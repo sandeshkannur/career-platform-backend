@@ -688,3 +688,43 @@ class SessionUserOut(BaseModel):
     consent_verified: bool = False
 
     message: Optional[str] = None
+
+# =========================================================
+# Context Profile (CPS) — Hybrid Model external factors
+# =========================================================
+
+class ContextProfileCreate(BaseModel):
+    """
+    Incoming context inputs for a single assessment run.
+    CPS is computed server-side deterministically.
+    """
+    assessment_id: int = Field(..., ge=1)
+    student_id: int = Field(..., ge=1)
+
+    # Version pins for strict replayability
+    assessment_version: str = Field(..., min_length=1, max_length=32)
+    scoring_config_version: str = Field(..., min_length=1, max_length=32)
+
+    # Context inputs
+    ses_band: str = Field(..., min_length=1, max_length=32)          # "EWS"|"LIG"|"MIG"|"HIG"
+    education_board: str = Field(..., min_length=1, max_length=32)   # "CBSE"|"ICSE"|"State"|...
+    support_level: str = Field(..., min_length=1, max_length=32)     # "Low"|"Medium"|"High"
+    resource_access: Optional[str] = Field(None, max_length=32)      # optional
+
+
+class ContextProfileOut(BaseModel):
+    id: int
+    assessment_id: int
+    student_id: int
+
+    assessment_version: str
+    scoring_config_version: str
+
+    ses_band: str
+    education_board: str
+    support_level: str
+    resource_access: Optional[str] = None
+
+    cps_score: float
+
+    model_config = ConfigDict(from_attributes=True)

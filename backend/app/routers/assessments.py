@@ -16,7 +16,7 @@ from app.deps import get_db
 from app.auth.auth import get_current_active_user
 
 # 🧠 Scoring logic for assessments (kept)
-from app.utils.scoring import compute_skill_scores, assign_tiers
+from app.utils.scoring import compute_skill_scores, assign_tiers, compute_cps_v1
 
 # 🔥 Existing
 from app.services.tier_mapping import apply_keyskill_tiers
@@ -55,7 +55,11 @@ def create_assessment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
 ):
-    assessment = models.Assessment(user_id=current_user.id)
+    assessment = models.Assessment(
+    user_id=current_user.id,
+    assessment_version="v1",
+    scoring_config_version="v1",
+)
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
@@ -335,3 +339,81 @@ def generate_result(assessment_id: int, student_id: int) -> None:
 
     finally:
         db.close()
+# ----------------------------------------------------------
+# 🌍 Context Profile Capture (CPS) — Append-only (Hybrid Model)
+# ----------------------------------------------------------
+@router.post(
+    "/context-profile",
+    response_model=schemas.ContextProfileOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Context Profile (CPS) for an assessment (immutable)",
+)
+def create_context_profile(
+    payload: schemas.ContextProfileCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Append-only Context Profile capture for Hybrid Model.
+    Immutability rule:
+    - One ContextProfile per assessment_id.
+    Strict validation:
+    - assessment_id must exist and belong to current_user.
+    """
+
+    # 1) Ensure assessment exists and belongs to the current user
+    assessment = db.query(models.Assessment).get(payload.assessment_id)
+    if not assessment or assessment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+    
+    # 1b) Strict version enforcement: payload must match pinned versions
+    if payload.assessment_version != assessment.assessment_version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="assessment_version mismatch for this assessment session",
+        )
+    if payload.scoring_config_version != assessment.scoring_config_version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="scoring_config_version mismatch for this assessment session",
+        )
+
+    # 2) Enforce immutability: only one ContextProfile per assessment
+    existing = (
+        db.query(models.ContextProfile)
+        .filter(models.ContextProfile.assessment_id == payload.assessment_id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Context profile already exists for this assessment (immutable)",
+        )
+
+    # 3) Compute CPS deterministically (v1)
+    cps_score = compute_cps_v1(
+        ses_band=payload.ses_band,
+        education_board=payload.education_board,
+        support_level=payload.support_level,
+    )
+
+    # 4) Insert row (version-pinned)
+    row = models.ContextProfile(
+        assessment_id=payload.assessment_id,
+        student_id=payload.student_id,
+        assessment_version=assessment.assessment_version,
+        scoring_config_version=assessment.scoring_config_version,
+        ses_band=payload.ses_band,
+        education_board=payload.education_board,
+        support_level=payload.support_level,
+        resource_access=payload.resource_access,
+        cps_score=cps_score,
+    )
+
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row

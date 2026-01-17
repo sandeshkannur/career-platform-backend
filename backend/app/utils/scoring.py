@@ -50,3 +50,59 @@ def assign_tiers(skill_scores: dict) -> dict:
         else:
             tiers[skill_id] = "Low"
     return tiers
+    
+# =========================================================
+# Context Profile Score (CPS) — Hybrid Model v1
+# =========================================================
+
+def compute_cps_v1(
+    *,
+    ses_band: str,
+    education_board: str,
+    support_level: str,
+) -> float:
+    """
+    Compute Context Profile Score (CPS) on a 0–100 scale.
+
+    Deterministic, explainable, versioned.
+    No DB access. No side effects.
+    """
+
+    # --- Normalization maps (v1 locked) ---
+
+    ses_map = {
+        "EWS": 0.40,
+        "LIG": 0.55,
+        "MIG": 0.75,
+        "HIG": 0.90,
+    }
+
+    board_map = {
+        "State": 0.55,
+        "CBSE": 0.75,
+        "ICSE": 0.80,
+        "International": 0.90,
+    }
+
+    support_map = {
+        "Low": 0.50,
+        "Medium": 0.75,
+        "High": 0.95,
+    }
+
+    # --- Safe defaults (psychological safety) ---
+    ses_score = ses_map.get(ses_band, 0.60)
+    board_score = board_map.get(education_board, 0.65)
+    support_score = support_map.get(support_level, 0.65)
+
+    # --- Weighted CPS ---
+    cps_normalized = (
+        (ses_score * 0.40)
+        + (board_score * 0.30)
+        + (support_score * 0.30)
+    )
+
+    # Scale to 0–100
+    cps_scaled = round(cps_normalized * 100, 2)
+
+    return cps_scaled
