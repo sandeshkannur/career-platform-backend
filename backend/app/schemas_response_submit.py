@@ -11,3 +11,4 @@ class SubmitResponseOut(BaseModel):
     last_answered_question_id: Optional[str] = None
     next_question_id: Optional[str] = None
     total_questions: int
+    is_complete: bool
