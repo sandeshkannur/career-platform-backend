@@ -287,7 +287,7 @@ def get_active_assessment(
     current_user=Depends(get_current_active_user),
 ):
     """
-    Deterministic rule (A2):
+    Deterministic rule (A3):
     - Primary: latest assessment for this user where no assessment_result exists yet
     - Fallback: if none, latest assessment where answered_count < total_questions
     - Allows answered_count = 0 (fresh assessment) to be active
@@ -347,6 +347,29 @@ def get_active_assessment(
             .limit(1)
             .scalar()
         )
+    # 5) Determine next_question_id deterministically (by Question.id ascending)
+    next_qid = None
+
+    if total_questions > 0:
+        if answered_count == 0:
+            # First question in deterministic order
+            next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
+        else:
+            # Next question after the last answered one
+            # Note: question_id in responses may be stored as string; coerce safely
+            try:
+                last_qid_int = int(last_qid) if last_qid is not None else None
+            except (TypeError, ValueError):
+                last_qid_int = None
+
+            if last_qid_int is not None:
+                next_qid = (
+                    db.query(models.Question.id)
+                    .filter(models.Question.id > last_qid_int)
+                    .order_by(models.Question.id.asc())
+                    .limit(1)
+                    .scalar()
+                )
 
     return ActiveAssessmentResponse(
         active=True,
@@ -355,6 +378,7 @@ def get_active_assessment(
         scoring_config_version=getattr(assessment, "scoring_config_version", None),
         answered_count=int(answered_count),
         last_answered_question_id=str(last_qid) if last_qid is not None else None,
+        next_question_id=str(next_qid) if next_qid is not None else None,
         total_questions=int(total_questions),
     )
 
