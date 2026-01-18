@@ -321,18 +321,34 @@ class AssessmentResponse(Base):
     """
     __tablename__ = "assessment_responses"
 
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=False, index=True)
+    question_id = Column(String, nullable=False)
+    answer = Column(String, nullable=False)
+
+    # NEW: idempotency key for offline replay safety (nullable for backward compatibility)
+    idempotency_key = Column(String(80), nullable=True, index=True)
+
     __table_args__ = (
+        # Existing immutability constraint stays
         UniqueConstraint(
             "assessment_id",
             "question_id",
             name="uq_assessment_responses_assessment_question",
         ),
+        # NEW: idempotency uniqueness per assessment
+        UniqueConstraint(
+            "assessment_id",
+            "idempotency_key",
+            name="uq_assessment_responses_assessment_id_idempotency_key",
+        ),
+        # Optional but useful for fast lookups
+        Index(
+            "ix_assessment_responses_assessment_id_idempotency_key",
+            "assessment_id",
+            "idempotency_key",
+        ),
     )
-
-    id = Column(Integer, primary_key=True, index=True)
-    assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=False)
-    question_id = Column(String, nullable=False)
-    answer = Column(String, nullable=False)
 
     assessment = relationship("Assessment", back_populates="responses")
 
@@ -402,7 +418,12 @@ class StudentSkillScore(Base):
     computed_at = Column(DateTime, server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("assessment_id", "scoring_config_version", "skill_id", name="uq_assess_skill_ver"),
+    UniqueConstraint(
+        "assessment_id",
+        "scoring_config_version",
+        "skill_id",
+        name="uq_student_skill_scores_assessment_version_skill",
+    ),
     )
 # =========================================================
 # B9: Analytics snapshots (NEW - additive)

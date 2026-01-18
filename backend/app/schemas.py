@@ -332,6 +332,14 @@ class AssessmentResponseCreate(BaseModel):
         ...,
         json_schema_extra={"example": "5"},
     )
+    idempotency_key: Optional[str] = Field(
+        default=None,
+        min_length=8,
+        max_length=80,
+        json_schema_extra={
+            "example": "6b4e7d5a-7ed6-4a10-b4d7-ff7d3a8e1d21"
+        },
+    )
 
 
 

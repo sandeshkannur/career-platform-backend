@@ -11,6 +11,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import and_
 
 from app import models, schemas
 from app.deps import get_db
@@ -132,22 +133,59 @@ def submit_responses(
 
     try:
         for r in responses:
+            # 1) If idempotency_key was already used for this assessment, treat as replay-success
+            if r.idempotency_key:
+                existing = (
+                    db.query(models.AssessmentResponse.id)
+                    .filter(
+                        and_(
+                            models.AssessmentResponse.assessment_id == assessment_id,
+                            models.AssessmentResponse.idempotency_key == r.idempotency_key,
+                        )
+                    )
+                    .first()
+                )
+                if existing:
+                    # Replay: do NOT insert; continue to next response in the batch
+                    continue
+
+            # 2) Normal insert path
             resp = models.AssessmentResponse(
                 assessment_id=assessment_id,
                 question_id=r.question_id,
                 answer=r.answer,
+                idempotency_key=r.idempotency_key,  # NEW
             )
             db.add(resp)
 
         db.commit()
 
     except IntegrityError:
-        # Uniqueness constraint hit: (assessment_id, question_id) already exists
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Immutable answers: this question_id was already submitted for this assessment.",
-        )
+
+        # Race-safe idempotency: if conflict happened but keys exist, check if it's an idempotency replay
+        if any(r.idempotency_key for r in responses):
+            replay_found = (
+                db.query(models.AssessmentResponse.id)
+                .filter(models.AssessmentResponse.assessment_id == assessment_id)
+                .filter(models.AssessmentResponse.idempotency_key.in_([r.idempotency_key for r in responses if r.idempotency_key]))
+                .first()
+            )
+            if replay_found:
+                # Treat as idempotent success (resume pointer returned below)
+                pass
+            else:
+                # Not an idempotency replay → preserve existing 409 behavior
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Immutable answers: this question_id was already submitted for this assessment.",
+                )
+        else:
+            # No idempotency keys provided → preserve existing 409 behavior
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Immutable answers: this question_id was already submitted for this assessment.",
+            )
 
     # ✅ Do NOT pass request-scoped db into background task
     background_tasks.add_task(generate_result, assessment_id, current_user.id)
