@@ -17,6 +17,7 @@ from app.deps import get_db
 from app.auth.auth import get_current_active_user
 from sqlalchemy import func
 from app.schemas_resume import ActiveAssessmentResponse
+from app.schemas_response_submit import SubmitResponseOut
 
 # 🧠 Scoring logic for assessments (kept)
 from app.utils.scoring import compute_skill_scores, assign_tiers, compute_cps_v1, compute_hsi_v1
@@ -106,8 +107,8 @@ def create_assessment(
 # ----------------------------------------------------------
 @router.post(
     "/{assessment_id}/responses",
-    response_model=List[schemas.AssessmentResponseOut],
-    summary="Submit responses for an assessment",
+    response_model=SubmitResponseOut,
+    summary="Submit response(s) (immutable) and return resume pointer",
 )
 def submit_responses(
     assessment_id: int,
@@ -123,7 +124,12 @@ def submit_responses(
             detail="Assessment not found"
         )
 
-    saved = []
+    if not responses or len(responses) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No responses provided"
+        )
+
     try:
         for r in responses:
             resp = models.AssessmentResponse(
@@ -132,7 +138,6 @@ def submit_responses(
                 answer=r.answer,
             )
             db.add(resp)
-            saved.append(resp)
 
         db.commit()
 
@@ -144,10 +149,57 @@ def submit_responses(
             detail="Immutable answers: this question_id was already submitted for this assessment.",
         )
 
-    # ✅ Step 5 fix: Do NOT pass request-scoped db into background task
+    # ✅ Do NOT pass request-scoped db into background task
     background_tasks.add_task(generate_result, assessment_id, current_user.id)
 
-    return saved
+    # ---- Resume pointer (deterministic) ----
+    total_questions = db.query(func.count(models.Question.id)).scalar() or 0
+
+    answered_count = (
+        db.query(func.count(models.AssessmentResponse.id))
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .scalar()
+    ) or 0
+
+    last_qid = (
+        db.query(models.AssessmentResponse.question_id)
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .order_by(models.AssessmentResponse.id.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    next_qid = None
+    if total_questions > 0:
+        # Note: question_id may be stored as string; coerce safely
+        try:
+            last_qid_int = int(last_qid) if last_qid is not None else None
+        except (TypeError, ValueError):
+            last_qid_int = None
+
+        if last_qid_int is None and answered_count == 0:
+            next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
+        elif last_qid_int is not None:
+            next_qid = (
+                db.query(models.Question.id)
+                .filter(models.Question.id > last_qid_int)
+                .order_by(models.Question.id.asc())
+                .limit(1)
+                .scalar()
+            )
+
+    # For the response payload, report the last question_id from THIS request (string)
+    last_submitted_qid = responses[-1].question_id
+
+    return SubmitResponseOut(
+        success=True,
+        assessment_id=assessment_id,
+        question_id=str(last_submitted_qid),
+        answered_count=int(answered_count),
+        last_answered_question_id=str(last_qid) if last_qid is not None else None,
+        next_question_id=str(next_qid) if next_qid is not None else None,
+        total_questions=int(total_questions),
+    )
 
 # ----------------------------------------------------------
 # 📥 Manual trigger for score computation and tier assignment
