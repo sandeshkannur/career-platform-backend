@@ -54,20 +54,86 @@ def get_localized_questions(
             detail=f"No questions found for assessment_version='{assessment_version}'",
         )
 
-    questions_out = []
+    questions_out: list[StudentQuestionItemOut] = []
+
     for q in rows:
         text_in_lang = getattr(q, lang_field, None)
+
+        # Safe English fallback
         if text_in_lang is None or (isinstance(text_in_lang, str) and text_in_lang.strip() == ""):
-            text_in_lang = q.question_text_en
+            text_in_lang = (
+                getattr(q, "question_text_en", None)
+                or getattr(q, "question_text", None)
+                or getattr(q, "text", None)
+                or getattr(q, "prompt", None)
+                or ""
+            )
 
         questions_out.append(
             StudentQuestionItemOut(
-                question_id=q.id,
+                question_id=str(q.id),  # ✅ must be string for schema
                 skill_id=q.skill_id,
                 question_text=text_in_lang,
             )
         )
 
+    # ✅ Always return the response model (never None)
+    return StudentQuestionsResponse(
+        assessment_version=assessment_version,
+        lang=lang,
+        lang_used=lang_used,
+        count_returned=len(questions_out),
+        questions=questions_out,
+    )
+# ----------------------------------------------------------
+# 📌 Fetch a single question by ID (resume-safe, deterministic)
+# ----------------------------------------------------------
+@router.get(
+    "/{question_id}",
+    summary="Fetch a question by ID (resume-safe)",
+)
+def get_question_by_id(
+    question_id: int,
+    lang: str | None = Query(
+        None,
+        description="Optional language code: en, hi, ta (unsupported values fall back to en)",
+    ),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Resume-safe question fetch.
+    Frontend runner uses next_question_id from /v1/assessments/active and fetches the exact question by ID.
+
+    - Deterministic (by ID)
+    - Version-safe (question record contains assessment_version)
+    - Localized text with fallback to English
+    """
+
+    q = db.query(Question).get(question_id)
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    requested_lang = (lang or "en").strip().lower()
+    if requested_lang not in LANG_FIELD_MAP:
+        lang_used = "en"
+        lang_field = LANG_FIELD_MAP["en"]
+    else:
+        lang_used = requested_lang
+        lang_field = LANG_FIELD_MAP[requested_lang]
+
+    text_in_lang = getattr(q, lang_field, None)
+    if text_in_lang is None or (isinstance(text_in_lang, str) and text_in_lang.strip() == ""):
+        text_in_lang = q.question_text_en
+
+    return {
+        "question_id": str(q.id),                 # keep as string (matches your response submit schema style)
+        "assessment_version": q.assessment_version,
+        "lang": lang,
+        "lang_used": lang_used,
+        "skill_id": q.skill_id,                   # legacy field (already used in your StudentQuestionItemOut)
+        "question_text": text_in_lang,
+    }    
     return StudentQuestionsResponse(
         assessment_version=assessment_version,
         lang=lang,
