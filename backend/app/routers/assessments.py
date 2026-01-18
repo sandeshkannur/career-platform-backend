@@ -287,12 +287,24 @@ def get_active_assessment(
     current_user=Depends(get_current_active_user),
 ):
     """
-    Deterministic rule (A1):
-    - Latest assessment for this user where no assessment_result exists yet
-    - Must have at least 1 response (otherwise active=false for now)
+    Deterministic rule (A2):
+    - Primary: latest assessment for this user where no assessment_result exists yet
+    - Fallback: if none, latest assessment where answered_count < total_questions
+    - Allows answered_count = 0 (fresh assessment) to be active
     """
 
-    # 1) Latest assessment without a result yet (treat as not completed)
+    # Total questions (stable, cheap)
+    total_questions = db.query(func.count(models.Question.id)).scalar() or 0
+
+    # Helper to count answered responses for an assessment
+    def _answered_count(a_id: int) -> int:
+        return (
+            db.query(func.count(models.AssessmentResponse.id))
+            .filter(models.AssessmentResponse.assessment_id == a_id)
+            .scalar()
+        ) or 0
+
+    # 1) Primary: latest assessment without a result yet (treat as not completed)
     assessment = (
         db.query(models.Assessment)
         .outerjoin(
@@ -305,30 +317,36 @@ def get_active_assessment(
         .first()
     )
 
+    # 2) Fallback: if none, pick the latest assessment where answered_count < total_questions
+    if not assessment and total_questions > 0:
+        latest = (
+            db.query(models.Assessment)
+            .filter(models.Assessment.user_id == current_user.id)
+            .order_by(models.Assessment.id.desc())
+            .limit(10)  # deterministic window: newest 10
+            .all()
+        )
+        for a in latest:
+            if _answered_count(a.id) < total_questions:
+                assessment = a
+                break
+
     if not assessment:
         return ActiveAssessmentResponse(active=False)
 
-    # 2) Count answered
-    answered_count = (
-        db.query(func.count(models.AssessmentResponse.id))
-        .filter(models.AssessmentResponse.assessment_id == assessment.id)
-        .scalar()
-    ) or 0
+    # 3) Count answered (0 is allowed now)
+    answered_count = _answered_count(assessment.id)
 
-    if answered_count == 0:
-        return ActiveAssessmentResponse(active=False)
-
-    # 3) Last answered question_id
-    last_qid = (
-        db.query(models.AssessmentResponse.question_id)
-        .filter(models.AssessmentResponse.assessment_id == assessment.id)
-        .order_by(models.AssessmentResponse.id.desc())
-        .limit(1)
-        .scalar()
-    )
-
-    # 4) Total questions
-    total_questions = db.query(func.count(models.Question.id)).scalar() or 0
+    # 4) Last answered question_id (only if any answered)
+    last_qid = None
+    if answered_count > 0:
+        last_qid = (
+            db.query(models.AssessmentResponse.question_id)
+            .filter(models.AssessmentResponse.assessment_id == assessment.id)
+            .order_by(models.AssessmentResponse.id.desc())
+            .limit(1)
+            .scalar()
+        )
 
     return ActiveAssessmentResponse(
         active=True,
