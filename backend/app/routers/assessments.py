@@ -130,7 +130,16 @@ def submit_responses(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No responses provided"
         )
-
+# ------------------------------------------------------
+    # M4-A2: Pre-fetch existing question_ids for this assessment
+    # Allows partial offline replay batches to succeed safely
+    # ------------------------------------------------------
+    existing_qids = {
+        row[0]
+        for row in db.query(models.AssessmentResponse.question_id)
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .all()
+    }
     try:
         for r in responses:
             # 1) If idempotency_key was already used for this assessment, treat as replay-success
@@ -149,12 +158,15 @@ def submit_responses(
                     # Replay: do NOT insert; continue to next response in the batch
                     continue
 
-            # 2) Normal insert path
+            # 2) Skip if this question was already answered (offline replay batch safety)
+            if r.question_id in existing_qids:
+                continue
+
             resp = models.AssessmentResponse(
                 assessment_id=assessment_id,
                 question_id=r.question_id,
                 answer=r.answer,
-                idempotency_key=r.idempotency_key,  # NEW
+                idempotency_key=r.idempotency_key,
             )
             db.add(resp)
 
