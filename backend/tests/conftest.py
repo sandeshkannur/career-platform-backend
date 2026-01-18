@@ -82,11 +82,26 @@ def _reset_db(db):
 # -----------------------------------------------------------------------------
 @pytest.fixture(scope="session", autouse=True)
 def prepare_database():
-    # Clean slate (useful when re-running tests against Postgres)
-    Base.metadata.drop_all(bind=engine)
+    """
+    Postgres-safe clean slate:
+    drop the public schema CASCADE so FK dependency order never breaks teardown.
+    Deterministic for repeated runs and CI.
+    """
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
+        conn.execute(text("CREATE SCHEMA public;"))
+        # Keep grants consistent (safe even if role doesn't exist in some envs)
+        conn.execute(text("GRANT ALL ON SCHEMA public TO public;"))
+        conn.execute(text("GRANT ALL ON SCHEMA public TO counseling;"))
+
     Base.metadata.create_all(bind=engine)
     yield
-    Base.metadata.drop_all(bind=engine)
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
+        conn.execute(text("CREATE SCHEMA public;"))
+        conn.execute(text("GRANT ALL ON SCHEMA public TO public;"))
+        conn.execute(text("GRANT ALL ON SCHEMA public TO counseling;"))
 
 # -----------------------------------------------------------------------------
 # 5) Provide a TestClient for API tests
