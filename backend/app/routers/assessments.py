@@ -130,7 +130,7 @@ def submit_responses(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No responses provided"
         )
-# ------------------------------------------------------
+    # ------------------------------------------------------
     # M4-A2: Pre-fetch existing question_ids for this assessment
     # Allows partial offline replay batches to succeed safely
     # ------------------------------------------------------
@@ -681,7 +681,17 @@ def create_context_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Assessment not found",
         )
-    
+    # Resolve student profile (students.id) from current_user (users.id)
+    student_profile = (
+        db.query(models.Student)
+        .filter(models.Student.user_id == current_user.id)
+        .first()
+    )
+    if not student_profile:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Student profile not found for this user. Create student profile before submitting context profile.",
+        )
     # 1b) Strict version enforcement: payload must match pinned versions
     if payload.assessment_version != assessment.assessment_version:
         raise HTTPException(
@@ -701,10 +711,8 @@ def create_context_profile(
         .first()
     )
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Context profile already exists for this assessment (immutable)",
-        )
+        # Idempotent replay: return the existing immutable record
+        return existing
 
     # 3) Compute CPS deterministically (v1)
     cps_score = compute_cps_v1(
@@ -716,7 +724,7 @@ def create_context_profile(
     # 4) Insert row (version-pinned)
     row = models.ContextProfile(
         assessment_id=payload.assessment_id,
-        student_id=payload.student_id,
+        student_id=student_profile.id,
         assessment_version=assessment.assessment_version,
         scoring_config_version=assessment.scoring_config_version,
         ses_band=payload.ses_band,
