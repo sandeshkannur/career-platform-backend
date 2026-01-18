@@ -91,8 +91,8 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
 
     # 4) Submit responses
     payload = [
-    {"question_id": "1", "answer": "1"},
-    {"question_id": "2", "answer": "5"},
+        {"question_id": "1", "answer": "1"},
+        {"question_id": "2", "answer": "5"},
     ]
     resp1 = client.post(
         f"/v1/assessments/{ass.id}/responses",
@@ -102,9 +102,14 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
 
     assert resp1.status_code == status.HTTP_200_OK, resp1.text
     body1 = resp1.json()
-    assert isinstance(body1, list)
-    assert body1[0]["question_id"] == "1"
-    assert body1[0]["answer"] == "1"
+
+    # Contract: backend returns resume/state pointer payload (not list)
+    assert isinstance(body1, dict), body1
+    assert body1.get("assessment_id") == ass.id
+    assert body1.get("answered_count") == 2
+    assert body1.get("last_answered_question_id") in ("2", 2)
+    assert "next_question_id" in body1
+    assert "is_complete" in body1
 
     # 5) Trigger result generation
     from app.routers.assessments import generate_result
@@ -117,6 +122,8 @@ def test_submit_responses_and_fetch_result_happy_path(client, student_token):
     resp2 = client.get(f"/v1/assessments/{ass.id}/result", headers=headers)
     assert resp2.status_code == status.HTTP_200_OK
     body2 = resp2.json()
+
     assert body2["assessment_id"] == ass.id
+    assert "recommended_careers" in body2
     assert isinstance(body2["recommended_careers"], list)
     assert "recommended_stream" in body2
