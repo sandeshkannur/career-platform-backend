@@ -62,7 +62,7 @@ tmp/
 **/tmp/
 
 # --- Backend generated exports ---
-backend/openapi.json
+/backend_openapi.json
 backend/questions_v1.csv
 
 # --- Backend scripts folder (local-only helpers; commit only if you intend to ship it) ---
