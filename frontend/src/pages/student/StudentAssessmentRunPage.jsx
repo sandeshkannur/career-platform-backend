@@ -7,11 +7,11 @@ import Button from "../../ui/Button";
 
 import { getQuestionPool } from "../../api/questions";
 import { deterministicPick } from "../../lib/deterministicPick";
+import { loadAnswerQueue, replayAnswerQueueOnce } from "../../lib/replayQueue";
 
 const DRAFT_PREFIX_V2 = "__ASSESSMENT_RUN_DRAFT_V2__";
 const DRAFT_PREFIX_V1 = "__ASSESSMENT_RUN_DRAFT_V1__"; // legacy (migration only)
 const DRAFT_SCHEMA_VERSION = 2;
-
 
 const QUESTION_COUNT = 75;
 
@@ -51,6 +51,10 @@ export default function StudentAssessmentRunPage() {
 
   const [pool, setPool] = useState(null);
   const [poolError, setPoolError] = useState(null);
+
+  // A+ (auto-replay on open) — small, neutral UX signal
+  const [syncState, setSyncState] = useState({ status: "idle", message: "" });
+  const didAutoReplayRef = useRef(false);
 
   /* ---------------- Load question pool ---------------- */
   useEffect(() => {
@@ -177,8 +181,7 @@ export default function StudentAssessmentRunPage() {
         if (typeof val === "string" && val) {
           nextAnswers[qid] = {
             answer: val,
-            answered_at:
-              typeof v1?.savedAt === "string" ? v1.savedAt : now,
+            answered_at: typeof v1?.savedAt === "string" ? v1.savedAt : now,
           };
         }
       });
@@ -237,6 +240,59 @@ export default function StudentAssessmentRunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, legacyStorageKey, attemptId, selectedQuestionIds.length]);
 
+  /* ---------------- A+ Auto-replay on open (resume) ---------------- */
+  useEffect(() => {
+    // Run once per mount only
+    if (didAutoReplayRef.current) return;
+
+    // Need an assessment id to submit to
+    if (!attemptId || attemptId === "unknown") return;
+
+    // Only try when online (offline should not spam errors)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    // Only try if we have something queued
+    const q = loadAnswerQueue();
+    if (!Array.isArray(q) || q.length === 0) return;
+
+    didAutoReplayRef.current = true;
+
+    (async () => {
+      try {
+        setSyncState({ status: "syncing", message: "Syncing saved answers…" });
+
+        const res = await replayAnswerQueueOnce(attemptId);
+
+        if (res?.ok) {
+          // We do NOT clear queue here (by design). Clearing is handled later after verification.
+          console.log("[A+ auto-replay] submitted:", res.submitted, res.server);
+          setSyncState({
+            status: "done",
+            message:
+              res.submitted > 0
+                ? `Synced ${res.submitted} saved answer(s).`
+                : "No saved answers to sync.",
+          });
+        } else {
+          console.warn("[A+ auto-replay] not submitted:", res);
+          setSyncState({
+            status: "error",
+            message:
+              res?.message ||
+              "Could not sync saved answers automatically. You can continue normally.",
+          });
+        }
+      } catch (e) {
+        console.warn("[A+ auto-replay] error:", e);
+        setSyncState({
+          status: "error",
+          message:
+            "Could not sync saved answers automatically. You can continue normally.",
+        });
+      }
+    })();
+  }, [attemptId]);
+
   /* ---------------- Autosave draft on change ---------------- */
   useEffect(() => {
     if (!didLoadDraftRef.current) return;
@@ -251,7 +307,8 @@ export default function StudentAssessmentRunPage() {
       if (existingRaw) {
         try {
           const existing = JSON.parse(existingRaw);
-          if (typeof existing?.created_at === "string") createdAt = existing.created_at;
+          if (typeof existing?.created_at === "string")
+            createdAt = existing.created_at;
         } catch {
           // ignore
         }
@@ -281,18 +338,12 @@ export default function StudentAssessmentRunPage() {
     current?.text ?? current?.question_text ?? current?.prompt ?? "";
 
   const currentOptions = Array.isArray(current?.options)
-  ? current.options
-  : Array.isArray(current?.choices)
-  ? current.choices
-  : Array.isArray(current?.answers)
-  ? current.answers
-  : [
-      "Strongly Disagree",
-      "Disagree",
-      "Neutral",
-      "Agree",
-      "Strongly Agree",
-    ];
+    ? current.options
+    : Array.isArray(current?.choices)
+    ? current.choices
+    : Array.isArray(current?.answers)
+    ? current.answers
+    : ["Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"];
 
   const selected = currentId ? answers[currentId]?.answer : null;
   const isLast = index === QUESTIONS.length - 1;
@@ -325,7 +376,8 @@ export default function StudentAssessmentRunPage() {
       if (existingRaw) {
         try {
           const existing = JSON.parse(existingRaw);
-          if (typeof existing?.created_at === "string") createdAt = existing.created_at;
+          if (typeof existing?.created_at === "string")
+            createdAt = existing.created_at;
         } catch {
           // ignore
         }
@@ -370,7 +422,10 @@ export default function StudentAssessmentRunPage() {
         title="Assessment in Progress"
         subtitle="Loading your assessment…"
         actions={
-          <Button variant="secondary" onClick={() => navigate("/student/assessment")}>
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
             Back
           </Button>
         }
@@ -386,7 +441,10 @@ export default function StudentAssessmentRunPage() {
         title="Assessment in Progress"
         subtitle="Unable to load questions."
         actions={
-          <Button variant="secondary" onClick={() => navigate("/student/assessment")}>
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
             Back
           </Button>
         }
@@ -402,7 +460,10 @@ export default function StudentAssessmentRunPage() {
         title="Assessment in Progress"
         subtitle="No questions available."
         actions={
-          <Button variant="secondary" onClick={() => navigate("/student/assessment")}>
+          <Button
+            variant="secondary"
+            onClick={() => navigate("/student/assessment")}
+          >
             Back
           </Button>
         }
@@ -441,9 +502,17 @@ export default function StudentAssessmentRunPage() {
           ) : null}
         </div>
 
+        {/* A+ sync hint (neutral) */}
+        {syncState.status !== "idle" ? (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {syncState.message}
+          </div>
+        ) : null}
+
         {/* Determinism metadata (auditable) */}
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Deterministic selection: seed = attemptId, pick = {QUESTION_COUNT} (or fewer if pool smaller)
+          Deterministic selection: seed = attemptId, pick = {QUESTION_COUNT} (or
+          fewer if pool smaller)
         </div>
 
         {/* Question */}
