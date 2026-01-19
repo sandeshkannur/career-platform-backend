@@ -12,6 +12,7 @@ const DRAFT_PREFIX_V2 = "__ASSESSMENT_RUN_DRAFT_V2__";
 const DRAFT_PREFIX_V1 = "__ASSESSMENT_RUN_DRAFT_V1__"; // legacy (migration only)
 const DRAFT_SCHEMA_VERSION = 2;
 
+
 const QUESTION_COUNT = 75;
 
 /**
@@ -279,8 +280,19 @@ export default function StudentAssessmentRunPage() {
   const currentText =
     current?.text ?? current?.question_text ?? current?.prompt ?? "";
 
-  const currentOptions =
-    current?.options ?? current?.choices ?? current?.answers ?? [];
+  const currentOptions = Array.isArray(current?.options)
+  ? current.options
+  : Array.isArray(current?.choices)
+  ? current.choices
+  : Array.isArray(current?.answers)
+  ? current.answers
+  : [
+      "Strongly Disagree",
+      "Disagree",
+      "Neutral",
+      "Agree",
+      "Strongly Agree",
+    ];
 
   const selected = currentId ? answers[currentId]?.answer : null;
   const isLast = index === QUESTIONS.length - 1;
