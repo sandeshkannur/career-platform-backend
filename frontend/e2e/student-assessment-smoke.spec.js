@@ -6,21 +6,37 @@ test("Student assessment intro Start creates run, persists snapshot, and navigat
 }) => {
   await mockSession(page, { role: "student", is_minor: false, consent_verified: true });
 
-  // Mock backend: POST /v1/assessments/start
-  await page.route("**/v1/assessments/start", async (route) => {
+  // Mock backend: POST /v1/assessments/
+	await page.route("**/v1/assessments/", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
 
     return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        assessment_id: "assess_test_001",
-        status: "in_progress",
-        started_at: "2026-01-09T12:00:00Z",
-        snapshot: { version: 1 },
+		  id: 1,
+		  assessment_id: 1, // normalized by our wrapper contract
+		  submitted_at: null,
       }),
     });
   });
+// Mock backend: GET /v1/assessments/active (intro page loads this and disables buttons until it returns)
+await page.route("**/v1/assessments/active", async (route) => {
+  if (route.request().method() !== "GET") return route.fallback();
+
+  return route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      active: false,
+      is_complete: false,
+      assessment_id: null,
+      answered_count: 0,
+      total_questions: 30,
+      next_question_id: null,
+    }),
+  });
+});
 
   await page.goto("/student/assessment");
 
@@ -36,7 +52,7 @@ test("Student assessment intro Start creates run, persists snapshot, and navigat
   // Start -> creates real assessment_id and navigates to run route
   await startBtn.click();
 
-  await expect(page).toHaveURL(/\/student\/assessment\/run\/assess_test_001$/);
+  await expect(page).toHaveURL(/\/student\/assessment\/run\/1$/);
 
   // Snapshot persisted for resume
   const stored = await page.evaluate(() =>
@@ -45,5 +61,5 @@ test("Student assessment intro Start creates run, persists snapshot, and navigat
   expect(stored).toBeTruthy();
 
   const parsed = JSON.parse(stored);
-  expect(parsed.assessment_id).toBe("assess_test_001");
+  expect(parsed.assessment_id).toBe(1);
 });
