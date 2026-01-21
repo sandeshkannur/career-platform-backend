@@ -5,6 +5,11 @@ import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 import { useSession } from "../../hooks/useSession";
 import { getContextImpactCopyV1 } from "../../content/contextImpact.v1";
+import {
+  getResultsBlocksV1,
+  formatTopCareerLabel,
+  formatTopCareerScore,
+} from "../../content/resultsBlocks.v1";
 
 function PencilIcon({ size = 14 }) {
   return (
@@ -143,16 +148,47 @@ export default function StudentResultsPage() {
     return fields.every((v) => (v || "unknown") === "unknown");
   }, [ctx]);
 
+  function renderTopCareersBlock(block) {
+    const items = Array.isArray(block.value) ? block.value : [];
+    if (items.length === 0) {
+      return (
+        <div className="text-muted" style={{ fontSize: 13 }}>
+          {block.emptyText}
+        </div>
+      );
+    }
+
+    return (
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {items.slice(0, block.maxItems ?? 5).map((c, idx) => {
+          const label = formatTopCareerLabel(c, idx);
+          const score = formatTopCareerScore(c);
+
+          return (
+            <li key={`${label}-${idx}`} style={{ marginBottom: 6 }}>
+              <span style={{ fontWeight: 600 }}>{label}</span>
+              {score != null ? (
+                <span
+                  className="text-muted"
+                  style={{ marginLeft: 8, fontSize: 13 }}
+                >
+                  ({score})
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
   return (
     <SkeletonPage
       title="Your Career Results"
       subtitle="Top recommendations based on your assessment."
     >
       <div className="flex gap-2 justify-end">
-        <Button
-          variant="secondary"
-          onClick={() => navigate("/student/dashboard")}
-        >
+        <Button variant="secondary" onClick={() => navigate("/student/dashboard")}>
           Back to Dashboard
         </Button>
 
@@ -185,7 +221,7 @@ export default function StudentResultsPage() {
 
       {!loading && !error && (
         <>
-          {/* Context wrapper (clean, scalable, labels only) */}
+          {/* Context wrapper */}
           <div className="card" style={{ marginTop: 12 }}>
             <div
               style={{
@@ -203,7 +239,8 @@ export default function StudentResultsPage() {
 
                 {isContextUnknown ? (
                   <div className="text-muted" style={{ fontSize: 13 }}>
-                    Optional details that help us interpret results more fairly. You can change this anytime.
+                    Optional details that help us interpret results more fairly.
+                    You can change this anytime.
                   </div>
                 ) : (
                   <div className="text-muted" style={{ fontSize: 13 }}>
@@ -216,14 +253,19 @@ export default function StudentResultsPage() {
                 variant="secondary"
                 onClick={() => navigate("/student/context")}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
                   <PencilIcon />
                   {isContextUnknown ? "Add" : "Edit"}
                 </span>
               </Button>
             </div>
 
-            {/* Responsive grid: 4 on desktop, 2 on tablet, 1 on mobile */}
             <div
               style={{
                 marginTop: 12,
@@ -233,40 +275,64 @@ export default function StudentResultsPage() {
               }}
             >
               <div className="card" style={{ padding: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 12, marginBottom: 4 }}
+                >
                   Education board
                 </div>
-                <div style={{ fontWeight: 600 }}>{labelOrNotShared(ctx?.education_board)}</div>
+                <div style={{ fontWeight: 600 }}>
+                  {labelOrNotShared(ctx?.education_board)}
+                </div>
               </div>
 
               <div className="card" style={{ padding: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 12, marginBottom: 4 }}
+                >
                   Support level
                 </div>
-                <div style={{ fontWeight: 600 }}>{labelOrNotShared(ctx?.support_level)}</div>
+                <div style={{ fontWeight: 600 }}>
+                  {labelOrNotShared(ctx?.support_level)}
+                </div>
               </div>
 
               <div className="card" style={{ padding: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 12, marginBottom: 4 }}
+                >
                   Resource access
                 </div>
-                <div style={{ fontWeight: 600 }}>{labelOrNotShared(ctx?.resource_access)}</div>
+                <div style={{ fontWeight: 600 }}>
+                  {labelOrNotShared(ctx?.resource_access)}
+                </div>
               </div>
 
               <div className="card" style={{ padding: 12 }}>
-                <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 12, marginBottom: 4 }}
+                >
                   SES band
                 </div>
-                <div style={{ fontWeight: 600 }}>{labelOrNotShared(ctx?.ses_band)}</div>
+                <div style={{ fontWeight: 600 }}>
+                  {labelOrNotShared(ctx?.ses_band)}
+                </div>
               </div>
             </div>
+
             <div style={{ marginTop: 12 }}>
               <details>
                 <summary style={{ cursor: "pointer", fontWeight: 600 }}>
                   {getContextImpactCopyV1({ ctx }).title}
                 </summary>
 
-                <div className="text-muted" style={{ fontSize: 13, marginTop: 8 }}>
+                <div
+                  className="text-muted"
+                  style={{ fontSize: 13, marginTop: 8 }}
+                >
                   <div style={{ marginBottom: 8 }}>
                     {getContextImpactCopyV1({ ctx }).intro}
                   </div>
@@ -300,7 +366,6 @@ export default function StudentResultsPage() {
               </details>
             </div>
 
-            {/* Simple responsive override without new CSS files */}
             <style>{`
               @media (max-width: 980px) {
                 .card > div[style*="grid-template-columns: repeat(4"] {
@@ -315,31 +380,98 @@ export default function StudentResultsPage() {
             `}</style>
           </div>
 
-          {/* Existing results card */}
+          {/* Results card */}
           <div className="card" style={{ marginTop: 12 }}>
             <h3>Latest Assessment</h3>
 
             <p>
-              You have completed <strong>{data?.total_results ?? 0}</strong> assessment(s).
+              You have completed{" "}
+              <strong>{data?.total_results ?? 0}</strong> assessment(s).
             </p>
 
             {selectedResult ? (
               <>
                 <p>
-                  Showing result for <strong>Assessment #{selectedResult.assessment_id}</strong>
+                  Showing result for{" "}
+                  <strong>Assessment #{selectedResult.assessment_id}</strong>
                 </p>
                 <p>
                   Generated on{" "}
-                  <strong>{new Date(selectedResult.generated_at).toLocaleString()}</strong>
+                  <strong>
+                    {new Date(selectedResult.generated_at).toLocaleString()}
+                  </strong>
                 </p>
+
+                {/* Data-driven recommendations from content blocks */}
+                {(() => {
+                  const copy = getResultsBlocksV1({ result: selectedResult });
+                  const rec = copy.recommendations;
+
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                        {rec.title}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        {rec.blocks.map((block) => (
+                          <div
+                            key={block.key}
+                            className="card"
+                            style={{ padding: 12 }}
+                          >
+                            <div
+                              className="text-muted"
+                              style={{ fontSize: 12, marginBottom: 4 }}
+                            >
+                              {block.title}
+                            </div>
+
+                            {block.key === "top_careers" ? (
+                              renderTopCareersBlock(block)
+                            ) : (
+                              <>
+                                <div style={{ fontWeight: 600 }}>
+                                  {block.value}
+                                </div>
+                                {block.helper ? (
+                                  <div
+                                    className="text-muted"
+                                    style={{ fontSize: 13, marginTop: 6 }}
+                                  >
+                                    {block.helper}
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="text-muted" style={{ marginTop: 12 }}>
+                        {rec.footer}
+                      </div>
+
+                      <style>{`
+                        @media (max-width: 720px) {
+                          .card > div[style*="grid-template-columns: repeat(2"] {
+                            grid-template-columns: 1fr !important;
+                          }
+                        }
+                      `}</style>
+                    </div>
+                  );
+                })()}
               </>
             ) : (
               <p>No results available yet.</p>
             )}
-
-            <p className="text-muted">
-              Detailed career recommendations will appear here once scoring is finalized.
-            </p>
           </div>
         </>
       )}
