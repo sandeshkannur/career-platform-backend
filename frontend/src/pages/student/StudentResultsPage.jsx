@@ -10,6 +10,7 @@ import {
   formatTopCareerLabel,
   formatTopCareerScore,
 } from "../../content/resultsBlocks.v1";
+import resultsNotReady_v1 from "../../content/resultsNotReady.v1";
 
 function PencilIcon({ size = 14 }) {
   return (
@@ -26,6 +27,75 @@ function PencilIcon({ size = 14 }) {
         d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.33H5v-.92l8.06-8.06.92.92L5.92 19.58zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
       />
     </svg>
+  );
+}
+function ResultsNotReadyView({ content }) {
+  const blocks = content?.blocks || [];
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 16 }}>
+      {blocks.map((b, idx) => {
+        if (b.type === "hero") {
+          return (
+            <div key={idx} style={{ marginBottom: 16 }}>
+              <h1 style={{ fontSize: 22, margin: "0 0 8px 0" }}>
+                {b.title}
+              </h1>
+              <p style={{ margin: 0, lineHeight: 1.5 }}>{b.body}</p>
+            </div>
+          );
+        }
+
+        if (b.type === "info_list") {
+          return (
+            <div key={idx} style={{ marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, margin: "0 0 8px 0" }}>
+                {b.title}
+              </h2>
+              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+                {(b.items || []).map((it, j) => (
+                  <li key={j}>{it}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        }
+
+        if (b.type === "cta_row") {
+          return (
+            <div key={idx} style={{ marginTop: 20 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Button onClick={() => (window.location.href = b.primaryCta.to)}>
+                  {b.primaryCta.label}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  onClick={() => (window.location.href = b.secondaryCta.to)}
+                >
+                  {b.secondaryCta.label}
+                </Button>
+              </div>
+
+              {b.note ? (
+                <p
+                  style={{
+                    marginTop: 12,
+                    marginBottom: 0,
+                    lineHeight: 1.5,
+                    opacity: 0.85,
+                  }}
+                >
+                  {b.note}
+                </p>
+              ) : null}
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
   );
 }
 
@@ -203,21 +273,7 @@ export default function StudentResultsPage() {
 
       {loading && <p>Loading results…</p>}
 
-      {!loading && error && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3>Results not ready</h3>
-          <p>{error}</p>
-          <Button
-            onClick={() => {
-              setLoading(true);
-              setError("");
-              resolveStudentId();
-            }}
-          >
-            Retry
-          </Button>
-        </div>
-      )}
+      {!loading && error && <ResultsNotReadyView content={resultsNotReady_v1} />}
 
       {!loading && !error && (
         <>
@@ -470,7 +526,7 @@ export default function StudentResultsPage() {
                 })()}
               </>
             ) : (
-              <p>No results available yet.</p>
+              <ResultsNotReadyView content={resultsNotReady_v1} />
             )}
           </div>
         </>
