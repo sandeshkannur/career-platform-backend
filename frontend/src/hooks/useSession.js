@@ -6,6 +6,54 @@ import { getToken, setToken, clearToken, routeFromSession } from "../auth";
 import { apiGet, apiPost } from "../apiClient";
 import { toastSuccess } from "../toast";
 
+/**
+ * In-memory session cache + in-flight de-dupe.
+ * Goal: prevent multiple components calling useSession() from triggering multiple /v1/auth/me calls.
+ *
+ * - __sessionUserCache holds the last known /me payload for the current token.
+ * - __meInFlightPromise ensures concurrent bootstraps share the same request.
+ * - __cachedToken lets us invalidate cache when token changes.
+ */
+let __sessionUserCache = null;
+let __meInFlightPromise = null;
+let __cachedToken = null;
+
+async function fetchMeDeduped() {
+  const token = getToken();
+
+  // No token => no session
+  if (!token) {
+    __sessionUserCache = null;
+    __meInFlightPromise = null;
+    __cachedToken = null;
+    return null;
+  }
+
+  // Token changed => invalidate cache and in-flight promise
+  if (__cachedToken !== token) {
+    __sessionUserCache = null;
+    __meInFlightPromise = null;
+    __cachedToken = token;
+  }
+
+  // Serve from cache
+  if (__sessionUserCache) return __sessionUserCache;
+
+  // Share in-flight request across all hook instances
+  if (!__meInFlightPromise) {
+    __meInFlightPromise = (async () => {
+      const me = await apiGet("/v1/auth/me");
+      __sessionUserCache = me;
+      return me;
+    })().finally(() => {
+      // Allow future refresh attempts after this completes
+      __meInFlightPromise = null;
+    });
+  }
+
+  return __meInFlightPromise;
+}
+
 export function useSession() {
   const navigate = useNavigate();
   const _location = useLocation();
@@ -31,7 +79,8 @@ export function useSession() {
     }
 
     try {
-      const me = await apiGet("/v1/auth/me");
+      // ✅ De-duped /me call across multiple hook instances
+      const me = await fetchMeDeduped();
       setSessionUser(me);
 
       const currentPath = window.location.pathname;
@@ -39,7 +88,7 @@ export function useSession() {
       // ✅ only auto-route on public pages
       const isPublic = currentPath === "/" || currentPath === "/login";
 
-      if (isPublic) {
+      if (isPublic && me) {
         const target = routeFromSession(me, currentPath);
         if (target && target !== currentPath) {
           navigate(target, { replace: true });
@@ -47,6 +96,8 @@ export function useSession() {
       }
     } catch {
       clearToken();
+      __sessionUserCache = null;
+      __cachedToken = null;
       setSessionUser(null);
       navigate("/login", { replace: true });
     } finally {
@@ -76,7 +127,12 @@ export function useSession() {
     const data = await apiPost("/v1/auth/login", { email, password });
     setToken(data.access_token);
 
-    const me = await apiGet("/v1/auth/me");
+    // Token changed => invalidate cache explicitly
+    __sessionUserCache = null;
+    __meInFlightPromise = null;
+    __cachedToken = getToken();
+
+    const me = await fetchMeDeduped();
     setSessionUser(me);
 
     // one-time redirect guard (safe no-op)
@@ -97,6 +153,12 @@ export function useSession() {
     }
 
     clearToken();
+
+    // Clear cache on logout
+    __sessionUserCache = null;
+    __meInFlightPromise = null;
+    __cachedToken = null;
+
     setSessionUser(null);
     toastSuccess("Logged out");
     navigate("/login", { replace: true });
