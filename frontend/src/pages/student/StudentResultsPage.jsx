@@ -29,9 +29,9 @@ export default function StudentResultsPage() {
   const location = useLocation();
   const { sessionUser } = useSession();
 
-  const studentId = useMemo(() => {
-    return sessionUser?.student_profile?.student_id ?? sessionUser?.id ?? null;
-  }, [sessionUser]);
+  // Backend-authoritative student identity:
+  // Resolve student_id via /v1/students/students/me (NOT via auth/me student_profile).
+  const [studentId, setStudentId] = useState(null);
 
   const selectedAssessmentId = useMemo(() => {
     const qs = new URLSearchParams(location.search);
@@ -46,6 +46,24 @@ export default function StudentResultsPage() {
 
   // Context Profile (CPS inputs) for the selected assessment
   const [ctx, setCtx] = useState(null);
+
+  async function resolveStudentId() {
+    if (!sessionUser) return;
+
+    try {
+      const meStudent = await apiGet(`/v1/students/students/me`);
+      setStudentId(meStudent?.id ?? null);
+    } catch (e) {
+      setStudentId(null);
+      setError(e?.message || "Student profile not ready.");
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    resolveStudentId();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionUser]);
 
   useEffect(() => {
     async function load() {
@@ -70,7 +88,7 @@ export default function StudentResultsPage() {
       }
     }
 
-    load();
+    if (studentId) load();
   }, [studentId]);
 
   const selectedResult = useMemo(() => {
@@ -153,7 +171,15 @@ export default function StudentResultsPage() {
         <div className="card" style={{ marginTop: 12 }}>
           <h3>Results not ready</h3>
           <p>{error}</p>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+          <Button
+            onClick={() => {
+              setLoading(true);
+              setError("");
+              resolveStudentId();
+            }}
+          >
+            Retry
+          </Button>
         </div>
       )}
 

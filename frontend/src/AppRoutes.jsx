@@ -4,6 +4,7 @@ import { Suspense, lazy } from "react";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoadingScreen from "./components/LoadingScreen";
 import GuardianVerifyPage from "./pages/guardian/GuardianVerifyPage";
+import StudentContextPage from "./pages/student/StudentContextPage";
 
 /* ======================
    Lazy-loaded Pages
@@ -182,6 +183,14 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/student/context"
+          element={
+            <ProtectedRoute allowRoles={["student"]}>
+              <StudentContextPage />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/student/assessment"
@@ -208,6 +217,11 @@ export default function AppRoutes() {
               <StudentAssessmentSubmitPage />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path="/student/results"
+          element={<Navigate to="/student/results/latest" replace />}
+          
         />
 
         <Route
