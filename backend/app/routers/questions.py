@@ -72,6 +72,7 @@ def get_localized_questions(
         questions_out.append(
             StudentQuestionItemOut(
                 question_id=str(q.id),  # ✅ must be string for schema
+                question_code=q.question_code,
                 skill_id=q.skill_id,
                 question_text=text_in_lang,
             )
@@ -121,6 +122,7 @@ def get_question_pool(
         items.append(
             {
                 "question_id": str(q.id),
+                "question_code": q.question_code,
                 "assessment_version": q.assessment_version,
                 "lang": lang,
                 "lang_used": lang_used,
@@ -180,6 +182,7 @@ def get_question_by_id(
 
     return {
         "question_id": str(q.id),                 # keep as string (matches your response submit schema style)
+        "question_code": q.question_code,
         "assessment_version": q.assessment_version,
         "lang": lang,
         "lang_used": lang_used,

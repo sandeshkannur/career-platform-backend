@@ -336,6 +336,11 @@ class AssessmentResponseCreate(BaseModel):
         ...,
         json_schema_extra={"example": "V1_Q1"},
     )
+    # ✅ canonical/external id (preferred for analytics + long-term stability)
+    question_code: Optional[str] = Field(
+        default=None,
+        json_schema_extra={"example": "AQ01_F1_Q001"},
+    )
     answer: constr(pattern=r"^[1-5]$") = Field(
         ...,
         json_schema_extra={"example": "5"},
@@ -529,6 +534,7 @@ class RandomQuestionsResponse(BaseModel):
 
 class StudentQuestionItemOut(BaseModel):
     question_id: str = Field(..., json_schema_extra={"example": "V1_Q1"})
+    question_code: str | None = None # canonical identifier (external)
     skill_id: int = Field(..., json_schema_extra={"example": 1})
     question_text: str = Field(..., json_schema_extra={"example": "I enjoy solving logical puzzles."})
 

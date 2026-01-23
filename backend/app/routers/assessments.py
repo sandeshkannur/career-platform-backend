@@ -322,6 +322,31 @@ def submit_responses(
                 if existing:
                     # Replay: do NOT insert; continue to next response in the batch
                     continue
+                # ✅ Validate question_code if provided (prevents mismatched IDs/codes from corrupting analytics)
+            if getattr(r, "question_code", None):
+                try:
+                    qid_int = int(str(r.question_id).strip())
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"question_id must be integer-like when question_code is provided (got '{r.question_id}')",
+                    )
+
+                q = db.query(models.Question).filter(models.Question.id == qid_int).first()
+                if not q:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Question not found: id={qid_int}",
+                    )
+
+                expected_code = (q.question_code or "").strip()
+                provided_code = (r.question_code or "").strip()
+
+                if expected_code != provided_code:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"question_code mismatch for question_id={qid_int}: got '{provided_code}', expected '{expected_code}'",
+                    )
 
             # 2) Skip if this question was already answered (offline replay batch safety)
             if r.question_id in existing_qids:
