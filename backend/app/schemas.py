@@ -509,6 +509,7 @@ class AdminQuestionBulkResponse(BaseModel):
 
 class RandomQuestionItemOut(BaseModel):
     question_id: str
+    question_code: str | None = None
     skill_id: int
     question_text: str
 
