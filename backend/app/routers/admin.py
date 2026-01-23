@@ -7,6 +7,7 @@ from fastapi import (
     Form,
 )
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 import csv
 import io
@@ -935,7 +936,6 @@ async def upload_questions(
 # ============================================================
 # PR1. UPLOAD ASSOCIATED QUALITIES (AQ_MASTER)
 # ============================================================
-
 @router.post(
     "/upload-aqs",
     response_model=UploadResponse,
@@ -947,27 +947,37 @@ async def upload_aqs(
     current_user: UserSchema = Depends(get_current_active_user),
 ):
     """
-    Expected CSV headers (exact):
-      aq_id,aq_name
+    PR1 (versioned) expected CSV headers (exact):
+      assessment_version,aq_code,name_en,name_hi,name_ta,status
 
-    Idempotent behavior:
-    - If aq_id exists, update aq_name (safe additive update)
-    - Else insert
+    Required:
+      - assessment_version
+      - aq_code
+      - name_en
+
+    Writes to:
+      - associated_qualities_v (versioned knowledge pack table)
+
+    Upsert behavior:
+      - Unique key: (assessment_version, aq_code)
+      - If exists => update name/status fields
+      - Else insert
     """
     if file.content_type != "text/csv":
         raise HTTPException(status_code=400, detail="Only text/csv files are accepted")
 
-    text = (await file.read()).decode("utf-8-sig")
-    if not text.strip():
+    text_csv = (await file.read()).decode("utf-8-sig")
+    if not text_csv.strip():
         raise HTTPException(status_code=400, detail="CSV file is empty")
 
-    reader = csv.DictReader(io.StringIO(text))
+    reader = csv.DictReader(io.StringIO(text_csv))
 
-    expected_fields = {"aq_id", "aq_name"}
-    if set(reader.fieldnames or []) != expected_fields:
+    expected_headers = ["assessment_version", "aq_code", "name_en", "name_hi", "name_ta", "status"]
+    actual_headers = reader.fieldnames or []
+    if actual_headers != expected_headers:
         raise HTTPException(
             status_code=400,
-            detail=f"CSV must have columns exactly {expected_fields}, but got {reader.fieldnames}",
+            detail=f"Header mismatch. Expected exactly {expected_headers} but got {actual_headers}",
         )
 
     inserted = 0
@@ -975,33 +985,68 @@ async def upload_aqs(
     skipped = 0
 
     for row_num, row in enumerate(reader, start=2):
-        aq_id = (row.get("aq_id") or "").strip()
-        aq_name = (row.get("aq_name") or "").strip()
+        assessment_version = (row.get("assessment_version") or "").strip()
+        aq_code = (row.get("aq_code") or "").strip()
+        name_en = (row.get("name_en") or "").strip()
 
-        if not aq_id or not aq_name:
+        name_hi = (row.get("name_hi") or "").strip() or None
+        name_ta = (row.get("name_ta") or "").strip() or None
+        status = (row.get("status") or "").strip() or "active"
+
+        if not assessment_version or not aq_code or not name_en:
             skipped += 1
             continue
 
-        existing = db.query(models.AssociatedQuality).filter_by(aq_id=aq_id).first()
-        if existing:
-            # update only if changed
-            if (existing.aq_name or "").strip() != aq_name:
-                existing.aq_name = aq_name
-                updated += 1
-            else:
-                skipped += 1
-            continue
+        # Pre-check existence to keep inserted vs updated counts accurate
+        exists = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM associated_qualities_v
+                WHERE assessment_version = :v AND aq_code = :c
+                LIMIT 1
+                """
+            ),
+            {"v": assessment_version, "c": aq_code},
+        ).first()
 
-        db.add(models.AssociatedQuality(aq_id=aq_id, aq_name=aq_name))
-        inserted += 1
+        db.execute(
+            text(
+                """
+                INSERT INTO associated_qualities_v
+                    (assessment_version, aq_code, name_en, name_hi, name_ta, status)
+                VALUES
+                    (:assessment_version, :aq_code, :name_en, :name_hi, :name_ta, :status)
+                ON CONFLICT (assessment_version, aq_code)
+                DO UPDATE SET
+                    name_en = EXCLUDED.name_en,
+                    name_hi = EXCLUDED.name_hi,
+                    name_ta = EXCLUDED.name_ta,
+                    status  = EXCLUDED.status,
+                    updated_at = NOW()
+                """
+            ),
+            {
+                "assessment_version": assessment_version,
+                "aq_code": aq_code,
+                "name_en": name_en,
+                "name_hi": name_hi,
+                "name_ta": name_ta,
+                "status": status,
+            },
+        )
+
+        if exists:
+            updated += 1
+        else:
+            inserted += 1
 
     db.commit()
-    logger.info(f"upload-aqs: inserted={inserted}, updated={updated}, skipped={skipped}")
+    logger.info(f"upload-aqs(v): inserted={inserted}, updated={updated}, skipped={skipped}")
     return {"status": "success", "inserted": inserted}
 
-
 # ============================================================
-# PR1. UPLOAD AQ FACETS (AQ_FACET_TAXONOMY)
+# PR1. UPLOAD AQ FACETS (AQ_FACET_TAXONOMY) - VERSIONED
 # ============================================================
 
 @router.post(
@@ -1015,30 +1060,53 @@ async def upload_aq_facets(
     current_user: UserSchema = Depends(get_current_active_user),
 ):
     """
-    Expected CSV headers (exact):
-      aq_id,aq_name,facet_id,facet_name
+    PR1 (versioned) expected CSV headers (exact):
+      assessment_version,facet_code,aq_code,name_en,name_hi,name_ta,description_en,description_hi,description_ta,status
 
-    Idempotent behavior:
-    - If facet_id exists, update facet_name + aq_id if needed
-    - Else insert
+    Required:
+      - assessment_version
+      - facet_code
+      - aq_code
+      - name_en
 
-    FK behavior:
-    - aq_id must exist in associated_qualities (otherwise skip row)
+    Writes to:
+      - aq_facets_v (versioned knowledge pack table)
+
+    FK behavior (version-safe):
+      - (assessment_version, aq_code) must exist in associated_qualities_v
+        otherwise row is skipped (and not inserted)
+
+    Upsert behavior:
+      - Unique key: (assessment_version, facet_code)
+      - If exists => update fields
+      - Else insert
     """
     if file.content_type != "text/csv":
         raise HTTPException(status_code=400, detail="Only text/csv files are accepted")
 
-    text = (await file.read()).decode("utf-8-sig")
-    if not text.strip():
+    text_csv = (await file.read()).decode("utf-8-sig")
+    if not text_csv.strip():
         raise HTTPException(status_code=400, detail="CSV file is empty")
 
-    reader = csv.DictReader(io.StringIO(text))
+    reader = csv.DictReader(io.StringIO(text_csv))
 
-    expected_fields = {"aq_id", "aq_name", "facet_id", "facet_name"}
-    if set(reader.fieldnames or []) != expected_fields:
+    expected_headers = [
+        "assessment_version",
+        "facet_code",
+        "aq_code",
+        "name_en",
+        "name_hi",
+        "name_ta",
+        "description_en",
+        "description_hi",
+        "description_ta",
+        "status",
+    ]
+    actual_headers = reader.fieldnames or []
+    if actual_headers != expected_headers:
         raise HTTPException(
             status_code=400,
-            detail=f"CSV must have columns exactly {expected_fields}, but got {reader.fieldnames}",
+            detail=f"Header mismatch. Expected exactly {expected_headers} but got {actual_headers}",
         )
 
     inserted = 0
@@ -1046,40 +1114,97 @@ async def upload_aq_facets(
     skipped = 0
 
     for row_num, row in enumerate(reader, start=2):
-        aq_id = (row.get("aq_id") or "").strip()
-        facet_id = (row.get("facet_id") or "").strip()
-        facet_name = (row.get("facet_name") or "").strip()
+        assessment_version = (row.get("assessment_version") or "").strip()
+        facet_code = (row.get("facet_code") or "").strip()
+        aq_code = (row.get("aq_code") or "").strip()
+        name_en = (row.get("name_en") or "").strip()
 
-        if not aq_id or not facet_id or not facet_name:
+        name_hi = (row.get("name_hi") or "").strip() or None
+        name_ta = (row.get("name_ta") or "").strip() or None
+
+        description_en = (row.get("description_en") or "").strip() or None
+        description_hi = (row.get("description_hi") or "").strip() or None
+        description_ta = (row.get("description_ta") or "").strip() or None
+
+        status = (row.get("status") or "").strip() or "active"
+
+        if not assessment_version or not facet_code or not aq_code or not name_en:
             skipped += 1
             continue
 
-        # FK check
-        if not db.query(models.AssociatedQuality).filter_by(aq_id=aq_id).first():
+        # FK check (version-safe): AQ must exist in associated_qualities_v for same version
+        aq_exists = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM associated_qualities_v
+                WHERE assessment_version = :v AND aq_code = :aq
+                LIMIT 1
+                """
+            ),
+            {"v": assessment_version, "aq": aq_code},
+        ).first()
+
+        if not aq_exists:
             skipped += 1
             continue
 
-        existing = db.query(AQFacet).filter_by(facet_id=facet_id).first()
-        if existing:
-            changed = False
-            if (existing.facet_name or "").strip() != facet_name:
-                existing.facet_name = facet_name
-                changed = True
-            if (existing.aq_id or "").strip() != aq_id:
-                existing.aq_id = aq_id
-                changed = True
+        # Pre-check existence for accurate inserted vs updated counts
+        exists = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM aq_facets_v
+                WHERE assessment_version = :v AND facet_code = :fc
+                LIMIT 1
+                """
+            ),
+            {"v": assessment_version, "fc": facet_code},
+        ).first()
 
-            if changed:
-                updated += 1
-            else:
-                skipped += 1
-            continue
+        db.execute(
+            text(
+                """
+                INSERT INTO aq_facets_v
+                    (assessment_version, facet_code, aq_code, name_en, name_hi, name_ta,
+                     description_en, description_hi, description_ta, status)
+                VALUES
+                    (:assessment_version, :facet_code, :aq_code, :name_en, :name_hi, :name_ta,
+                     :description_en, :description_hi, :description_ta, :status)
+                ON CONFLICT (assessment_version, facet_code)
+                DO UPDATE SET
+                    aq_code = EXCLUDED.aq_code,
+                    name_en = EXCLUDED.name_en,
+                    name_hi = EXCLUDED.name_hi,
+                    name_ta = EXCLUDED.name_ta,
+                    description_en = EXCLUDED.description_en,
+                    description_hi = EXCLUDED.description_hi,
+                    description_ta = EXCLUDED.description_ta,
+                    status = EXCLUDED.status,
+                    updated_at = NOW()
+                """
+            ),
+            {
+                "assessment_version": assessment_version,
+                "facet_code": facet_code,
+                "aq_code": aq_code,
+                "name_en": name_en,
+                "name_hi": name_hi,
+                "name_ta": name_ta,
+                "description_en": description_en,
+                "description_hi": description_hi,
+                "description_ta": description_ta,
+                "status": status,
+            },
+        )
 
-        db.add(AQFacet(aq_id=aq_id, facet_id=facet_id, facet_name=facet_name))
-        inserted += 1
+        if exists:
+            updated += 1
+        else:
+            inserted += 1
 
     db.commit()
-    logger.info(f"upload-aq-facets: inserted={inserted}, updated={updated}, skipped={skipped}")
+    logger.info(f"upload-aq-facets(v): inserted={inserted}, updated={updated}, skipped={skipped}")
     return {"status": "success", "inserted": inserted}
 
 
