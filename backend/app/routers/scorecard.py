@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import text
 
 from app import deps, models, schemas
 from app.auth.auth import get_current_active_user
@@ -14,6 +15,7 @@ from app.services.scoring import (
 )
 from app.services.explanations import build_full_explanation
 from app.services.tier_mapping import tier_to_score
+from app.services.evidence import compute_assessment_evidence
 
 
 router = APIRouter(
@@ -40,6 +42,29 @@ def reverse_tier(score: float) -> str:
 
 @router.get("/{student_id}", response_model=schemas.ScorecardResponse)
 def get_scorecard(student_id: int, db: Session = Depends(deps.get_db)):
+
+    # PR5: Evidence computed-on-read from the latest assessment that has responses.
+    # Authoritative linkage: students.user_id -> assessments.user_id -> assessment_responses.assessment_id
+    latest_assessment_id = db.execute(
+        text("""
+            SELECT a.id
+            FROM students s
+            JOIN assessments a
+              ON a.user_id = s.user_id
+            JOIN assessment_responses ar
+              ON ar.assessment_id = a.id
+            WHERE s.id = :student_id
+              AND s.user_id IS NOT NULL
+            ORDER BY a.id DESC
+            LIMIT 1
+        """),
+        {"student_id": student_id},
+    ).scalar()
+
+    evidence = None
+    if latest_assessment_id is not None:
+        evidence = compute_assessment_evidence(db, int(latest_assessment_id))
+
     # keyskill numeric scores (0–1.0), normalized
     sk_normalized = get_student_keyskill_scores(db, student_id)
 
@@ -49,6 +74,9 @@ def get_scorecard(student_id: int, db: Session = Depends(deps.get_db)):
             clusters=[],
             careers=[],
             keyskills=[],
+            cluster_scores={},
+            career_scores={},
+            evidence=evidence,
             message="No key skills mapped for this student."
         )
 
@@ -92,5 +120,6 @@ def get_scorecard(student_id: int, db: Session = Depends(deps.get_db)):
         keyskills=ks_output,
         cluster_scores=cluster_scores,
         career_scores=career_scores,
+        evidence=evidence,
         message=None,
     )

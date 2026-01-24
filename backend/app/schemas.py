@@ -418,8 +418,37 @@ class ScorecardResponse(BaseModel):
     # raw scoring useful for charts
     cluster_scores: Dict[int, float] = Field(default_factory=dict)
     career_scores: Dict[int, float] = Field(default_factory=dict)
+    
+    # PR5: additive explainability evidence (computed-on-read)
+    evidence: Optional["AssessmentEvidenceBlock"] = None
 
     message: Optional[str] = None
+
+
+# ===============================
+# PR5: Evidence Schemas (computed-on-read)
+# ===============================
+
+class FacetEvidenceItem(BaseModel):
+    facet_code: str
+    facet_name_en: str
+    aq_code: str
+    aq_name_en: str
+    evidence_count: int
+    question_codes: List[str] = Field(default_factory=list)
+
+
+class AQEvidenceSummaryItem(BaseModel):
+    aq_code: str
+    aq_name_en: str
+    evidence_count: int
+    facet_codes: List[str] = Field(default_factory=list)
+    question_codes: List[str] = Field(default_factory=list)
+
+
+class AssessmentEvidenceBlock(BaseModel):
+    facet_evidence: List[FacetEvidenceItem] = Field(default_factory=list)
+    aq_evidence_summary: List[AQEvidenceSummaryItem] = Field(default_factory=list)
 
 
 # ===============================
@@ -511,12 +540,17 @@ class AdminQuestionBulkResponse(BaseModel):
 # ===============================
 # STUDENT RANDOM QUESTION DELIVERY SCHEMAS (B5)
 # ===============================
+class FacetTagOut(BaseModel):
+    facet_code: str
+    facet_name_en: Optional[str] = None
+    aq_code: Optional[str] = None
 
 class RandomQuestionItemOut(BaseModel):
     question_id: str
     question_code: str | None = None
     skill_id: int
     question_text: str
+    facet_tags: List[FacetTagOut] = Field(default_factory=list)
 
 
 class RandomQuestionsResponse(BaseModel):
@@ -537,6 +571,7 @@ class StudentQuestionItemOut(BaseModel):
     question_code: str | None = None # canonical identifier (external)
     skill_id: int = Field(..., json_schema_extra={"example": 1})
     question_text: str = Field(..., json_schema_extra={"example": "I enjoy solving logical puzzles."})
+    facet_tags: List[FacetTagOut] = Field(default_factory=list)
 
 
 class StudentQuestionsResponse(BaseModel):

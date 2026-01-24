@@ -28,12 +28,19 @@ def get_student_keyskill_scores(db: Session, student_id: int) -> dict:
 
     for keyskill_id, raw_score in rows:
         if raw_score is None:
-            # Old behavior: presence = full strength
+            # Legacy behavior: presence = full strength
             normalized = 1.0
         else:
-            # Clamp to [0, 100] just in case and normalize
-            value = max(0.0, min(100.0, float(raw_score)))
-            normalized = value / 100.0
+            value = float(raw_score)
+
+            # Mixed-scale support:
+            # - if value is 0–1, treat as already-normalized
+            # - if value is >1, treat as 0–100 and normalize
+            if value <= 1.0:
+                normalized = max(0.0, min(1.0, value))
+            else:
+                value_0_100 = max(0.0, min(100.0, value))
+                normalized = value_0_100 / 100.0
 
         scores[keyskill_id] = normalized
 
@@ -64,6 +71,11 @@ def compute_career_scores(db: Session, student_id: int) -> dict:
     for career_id, keyskill_id, weight in rows:
         if career_id not in career_scores:
             career_scores[career_id] = 0.0
+
+        # Guard: some legacy rows have NULL weight_percentage.
+        # Treat NULL as "no contribution" to avoid 500s.
+        if weight is None:
+            continue
 
         s_val = student_scores.get(keyskill_id, 0.0)
         career_scores[career_id] += s_val * float(weight)

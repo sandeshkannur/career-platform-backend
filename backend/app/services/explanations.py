@@ -133,19 +133,23 @@ def build_full_explanation(db: Session, student_id: int):
             ).all()
 
             for ks_id, weight in ks_rows:
-                # Only count weights for keyskills the student actually has
-                if student_keyskills.get(ks_id, 0) <= 0:
-                    continue
+                  # Only count weights for keyskills the student actually has
+                  if student_keyskills.get(ks_id, 0) <= 0:
+                      continue
 
-                # classify into bands using weightage rationale
-                if weight >= 30:
-                    band = "core"
-                elif weight >= 20:
-                    band = "supporting"
-                else:
-                    band = "auxiliary"
+                  # Guard: legacy rows may have NULL weight_percentage
+                  if weight is None:
+                      continue
 
-                band_contrib[band] += float(weight)
+                  # classify into bands using weightage rationale
+                  if weight >= 30:
+                      band = "core"
+                  elif weight >= 20:
+                      band = "supporting"
+                  else:
+                      band = "auxiliary"
+
+                  band_contrib[band] += float(weight)
 
         total_band = sum(band_contrib.values())
         if total_band > 0:
@@ -192,7 +196,7 @@ def build_full_explanation(db: Session, student_id: int):
                 continue
             contributions.append((ks_obj, weight))
 
-        contributions = sorted(contributions, key=lambda x: x[1], reverse=True)[:3]
+        contributions = sorted(contributions, key=lambda x: (x[1] or 0), reverse=True)[:3]
 
         career_output.append({
             "career_id": career_id,
