@@ -1,30 +1,75 @@
 # app/routers/recommendations.py
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import text
 
 from app import models
 from app.deps import get_db
+from app.services.scoring import compute_career_scores
+from app.auth.auth import get_current_active_user, require_roles
 
 router = APIRouter(
-    prefix="/recommendations",
     tags=["Recommendations"],
     # NOTE: no auth dependency here to avoid 401 issues in Swagger for now
 )
 
 
-@router.get("/recommendations/{student_id}")
+def _sanitize_recommendations_payload(payload: dict) -> dict:
+    """
+    Remove all numeric score-related fields from /recommendations payload.
+    Students/parents should never receive numbers in network response.
+    """
+    out = dict(payload)
+    recs = out.get("recommended_careers") or []
+
+    for r in recs:
+        # remove numeric fields
+        for k in ["score"]:
+            r.pop(k, None)
+
+        # remove weights (numeric) from matched_keyskills
+        mks = r.get("matched_keyskills") or []
+        for ks in mks:
+            ks.pop("weight", None)
+
+        # remove score from explainability vars if present
+        exp = r.get("explainability") or []
+        for e in exp:
+            if isinstance(e, dict) and isinstance(e.get("vars"), dict):
+                e["vars"].pop("score", None)
+                e["vars"].pop("top_keyskill_weights", None)
+
+    out["recommended_careers"] = recs
+    return out
+
+
+@router.get("/{student_id}")
 def get_recommendations(
     student_id: int,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user),
 ):
     """
     Get career recommendations for a student based on:
 
     StudentKeySkillMap -> KeySkill -> Career (via career_keyskill_association)
     """
-
+    # Students can only access their own recommendations.
+    # In this app, student linkage is via students.user_id (see /v1/auth/me).
+    if current_user.role == "student":
+        student_row = (
+            db.query(models.Student)
+            .filter(models.Student.user_id == current_user.id)
+            .first()
+        )
+        if not student_row or student_row.id != student_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation forbidden",
+            )
+    
     # 1) Get student's keyskills from StudentKeySkillMap
     keyskill_rows = (
         db.query(models.StudentKeySkillMap.keyskill_id)
@@ -40,27 +85,117 @@ def get_recommendations(
 
     keyskill_ids = [row[0] for row in keyskill_rows]
 
-    # 2) Get careers linked to those keyskills
+    # 2) Compute career scores using effective weights view (deterministic)
+    career_scores = compute_career_scores(db, student_id)
+
+    if not career_scores:
+        raise HTTPException(
+            status_code=404,
+            detail="No career scores could be computed for this student",
+        )
+
+    # 3) Pick Top 3 careers by score
+    top_n = 3
+    top = sorted(career_scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    top_career_ids = [cid for cid, _ in top]
+    # 3A) Explainability: top contributing keyskills (by effective weight)
+    contrib_rows = db.execute(
+        text("""
+            SELECT
+              skm.student_id,
+              v.career_id,
+              v.career_code,
+              v.keyskill_code,
+              v.keyskill_name,
+              v.effective_weight_int AS weight
+            FROM student_keyskill_map skm
+            JOIN keyskills k
+              ON k.id = skm.keyskill_id
+            JOIN career_keyskill_weights_effective_int_v v
+              ON v.keyskill_code = k.keyskill_code
+            WHERE skm.student_id = :sid
+              AND v.career_id = ANY(:career_ids)
+            ORDER BY v.career_id, v.effective_weight_int DESC, v.keyskill_code
+        """),
+        {"sid": student_id, "career_ids": top_career_ids},
+    ).mappings().all()
+
+    # group by career_id, keep top 3 per career
+    contrib_by_career: dict[int, list] = {}
+    for r in contrib_rows:
+        cid = r["career_id"]
+        contrib_by_career.setdefault(cid, [])
+        if len(contrib_by_career[cid]) < 3:
+            contrib_by_career[cid].append(
+                {
+                    "keyskill_code": r["keyskill_code"],
+                    "keyskill_name": r["keyskill_name"],
+                    "weight": int(r["weight"]),
+                }
+            )
+
     careers = (
         db.query(models.Career)
-        .join(models.career_keyskill_association)
-        .filter(models.career_keyskill_association.c.keyskill_id.in_(keyskill_ids))
-        .distinct()
+        .filter(models.Career.id.in_(top_career_ids))
         .all()
     )
 
-    # 3) Format response
-    recommendations = [
-        {
-            "career_id": c.id,
-            "title": c.title,
-            "description": c.description,
-            "cluster": c.cluster.name if c.cluster else None,
-        }
-        for c in careers
-    ]
+    # Keep ordering same as 'top'
+    career_by_id = {c.id: c for c in careers}
 
-    return {
+    recommendations = []
+    for cid, score in top:
+        c = career_by_id.get(cid)
+        if not c:
+            continue
+        recommendations.append(
+            {
+                "career_id": c.id,
+                "career_code": c.career_code,
+                "title": c.title,
+                "description": c.description,
+                "cluster": c.cluster.name if c.cluster else None,
+                "score": score,
+                "matched_keyskills": contrib_by_career.get(c.id, []),
+                # Explainability hooks (CMS keys) — placeholders for now
+                "explainability": [
+                    {
+                        "key": "CAREER_TOP_MATCH",
+                        "vars": {
+                            "career_title": c.title,
+                            "career_code": c.career_code,
+                            "cluster_name": c.cluster.name if c.cluster else None,
+                            "score": score,
+                        },
+                    },
+                    {
+                        "key": "CAREER_KEYSKILL_ALIGNMENT",
+                        "vars": {
+                            "top_keyskills": [ks["keyskill_name"] for ks in contrib_by_career.get(c.id, [])],
+                            "top_keyskill_weights": [ks["weight"] for ks in contrib_by_career.get(c.id, [])],
+                        },
+                    },
+                ],
+            }
+            )
+
+    payload = {
         "student_id": student_id,
         "recommended_careers": recommendations,
     }
+
+    # Students/parents must never receive numbers
+    
+    return _sanitize_recommendations_payload(payload)
+
+    
+
+@router.get("/admin/{student_id}")
+def get_recommendations_admin(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles(["admin", "counsellor"])),
+):
+    # Reuse the same logic by calling the student route function body pattern
+    # (We keep it simple: duplicate the call path by invoking the same compute pipeline)
+    return get_recommendations(student_id=student_id, db=db, current_user=current_user)

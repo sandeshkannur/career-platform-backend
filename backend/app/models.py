@@ -193,6 +193,7 @@ class Career(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
+    career_code = Column(String, unique=True, nullable=False)
     cluster_id = Column(Integer, ForeignKey("career_clusters.id"), nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
@@ -298,6 +299,32 @@ class Question(Base):
 # =========================================================
 # Assessment engine tables
 # =========================================================
+
+class AssessmentQuestion(Base):
+    """
+    AssessmentQuestion — persisted question set for an assessment attempt.
+
+    Used to enforce:
+    - 75 questions total (3 per AQ across AQ_01..AQ_25)
+    - deterministic replay + auditability
+    """
+    __tablename__ = "assessment_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    assessment_id = Column(
+        Integer,
+        ForeignKey("assessments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
+
+    assessment_version = Column(String(32), nullable=False, index=True)
+    question_code = Column(String(100), nullable=False)
+
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 class Assessment(Base):
     """

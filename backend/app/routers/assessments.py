@@ -17,6 +17,7 @@ from app import models, schemas
 from app.deps import get_db
 from app.auth.auth import get_current_active_user
 from sqlalchemy import func
+from sqlalchemy import text
 from app.schemas_resume import ActiveAssessmentResponse
 from app.schemas_response_submit import SubmitResponseOut
 
@@ -46,6 +47,81 @@ router = APIRouter(
     tags=["Assessments"],
 )
 
+def _sample_75_questions_v1(db: Session) -> List[Dict]:
+    """
+    Returns 75 questions (3 per AQ) for assessment_version='v1'.
+
+    Shape:
+      [{"question_id": int, "question_code": str, "aq_code": str}, ...]
+    """
+    rows = db.execute(
+        text(
+            """
+            WITH pool AS (
+              SELECT
+                q.id AS question_id,
+                q.question_code,
+                f.aq_code,
+                ROW_NUMBER() OVER (PARTITION BY f.aq_code ORDER BY RANDOM()) AS rn
+              FROM questions q
+              JOIN question_facet_tags_v t
+                ON t.assessment_version=q.assessment_version
+               AND t.question_code=q.question_code
+              JOIN aq_facets_v f
+                ON f.assessment_version=q.assessment_version
+               AND f.facet_code=t.facet_code
+              WHERE q.assessment_version='v1'
+            ),
+            pick AS (
+              SELECT * FROM pool WHERE rn <= 3
+            )
+            SELECT question_id, question_code, aq_code
+            FROM pick
+            ORDER BY aq_code, question_id;
+            """
+        )
+    ).fetchall()
+
+    picked = [{"question_id": int(r[0]), "question_code": str(r[1]), "aq_code": str(r[2])} for r in rows]
+
+    if len(picked) != 75:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Sampler failed: expected 75 questions, got {len(picked)}",
+        )
+
+    return picked
+
+
+def _persist_assessment_questions(
+    db: Session,
+    assessment_id: int,
+    assessment_version: str,
+    picked: List[Dict],
+) -> None:
+    """
+    Insert rows into assessment_questions.
+    Idempotent: if rows already exist for this assessment, do nothing.
+    """
+    exists = (
+        db.query(models.AssessmentQuestion.id)
+        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
+        .first()
+    )
+    if exists:
+        return
+
+    for item in picked:
+        db.add(
+            models.AssessmentQuestion(
+                assessment_id=assessment_id,
+                question_id=item["question_id"],
+                assessment_version=assessment_version,
+                question_code=item["question_code"],
+            )
+        )
+
+    db.commit()
 
 def _ensure_context_profile_for_assessment(
     db: Session,
@@ -252,19 +328,32 @@ def create_assessment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
 ):
+    # 1) Create assessment shell
     assessment = models.Assessment(
-    user_id=current_user.id,
-    assessment_version="v1",
-    scoring_config_version="v1",
-)
+        user_id=current_user.id,
+        assessment_version="v1",
+        scoring_config_version="v1",
+    )
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
+
+    # 2) Ensure ContextProfile exists (existing behavior)
     _ensure_context_profile_for_assessment(
-    db=db,
-    assessment=assessment,
-    current_user_id=current_user.id,
+        db=db,
+        assessment=assessment,
+        current_user_id=current_user.id,
     )
+
+    # 3) Pick + persist 75 AQ-balanced questions
+    picked = _sample_75_questions_v1(db=db)
+    _persist_assessment_questions(
+        db=db,
+        assessment_id=assessment.id,
+        assessment_version=assessment.assessment_version,
+        picked=picked,
+    )
+
     return assessment
 
 
@@ -398,8 +487,21 @@ def submit_responses(
     if not result_exists:
         background_tasks.add_task(generate_result, assessment_id, current_user.id)
 
-    # ---- Resume pointer (deterministic) ----
-    total_questions = db.query(func.count(models.Question.id)).scalar() or 0
+    # ---- Resume pointer (deterministic, 75-question aware) ----
+    persisted_ids = [
+        r[0]
+        for r in db.query(models.AssessmentQuestion.question_id)
+        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
+        .order_by(models.AssessmentQuestion.id.asc())
+        .all()
+    ]
+
+    # If persisted set exists, it is authoritative (75 questions)
+    if persisted_ids:
+        total_questions = len(persisted_ids)
+    else:
+        # Legacy fallback for old/test assessments (pre-persist)
+        total_questions = db.query(func.count(models.Question.id)).scalar() or 0
 
     answered_count = (
         db.query(func.count(models.AssessmentResponse.id))
@@ -416,24 +518,43 @@ def submit_responses(
     )
 
     next_qid = None
-    if total_questions > 0:
-        # Note: question_id may be stored as string; coerce safely
-        try:
-            last_qid_int = int(last_qid) if last_qid is not None else None
-        except (TypeError, ValueError):
-            last_qid_int = None
 
-        if last_qid_int is None and answered_count == 0:
-            next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
-        elif last_qid_int is not None:
-            next_qid = (
-                db.query(models.Question.id)
-                .filter(models.Question.id > last_qid_int)
-                .order_by(models.Question.id.asc())
-                .limit(1)
-                .scalar()
-            )
-    is_complete = (next_qid is None) and (answered_count >= total_questions)        
+    if total_questions > 0:
+        if persisted_ids:
+            # Next question comes from the persisted list order
+            if answered_count == 0:
+                next_qid = persisted_ids[0]
+            else:
+                try:
+                    last_qid_int = int(last_qid) if last_qid is not None else None
+                except (TypeError, ValueError):
+                    last_qid_int = None
+
+                if last_qid_int is not None and last_qid_int in persisted_ids:
+                    idx = persisted_ids.index(last_qid_int)
+                    next_qid = persisted_ids[idx + 1] if (idx + 1) < len(persisted_ids) else None
+                else:
+                    # Safe fallback: start at the first question in the set
+                    next_qid = persisted_ids[0]
+        else:
+            # Legacy fallback: next question by global Question.id
+            try:
+                last_qid_int = int(last_qid) if last_qid is not None else None
+            except (TypeError, ValueError):
+                last_qid_int = None
+
+            if last_qid_int is None and answered_count == 0:
+                next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
+            elif last_qid_int is not None:
+                next_qid = (
+                    db.query(models.Question.id)
+                    .filter(models.Question.id > last_qid_int)
+                    .order_by(models.Question.id.asc())
+                    .limit(1)
+                    .scalar()
+                )
+
+    is_complete = (next_qid is None) and (answered_count >= total_questions)       
 
     # For the response payload, report the last question_id from THIS request (string)
     last_submitted_qid = responses[-1].question_id
@@ -612,8 +733,20 @@ def get_active_assessment(
     - Allows answered_count = 0 (fresh assessment) to be active
     """
 
-    # Total questions (stable, cheap)
-    total_questions = db.query(func.count(models.Question.id)).scalar() or 0
+    # Total questions (75-question aware)
+    persisted_ids = [
+        r[0]
+        for r in db.query(models.AssessmentQuestion.question_id)
+        .filter(models.AssessmentQuestion.assessment_id == assessment.id)
+        .order_by(models.AssessmentQuestion.id.asc())
+        .all()
+    ]
+
+    if persisted_ids:
+        total_questions = len(persisted_ids)
+    else:
+        # Legacy fallback for old/test assessments (pre-persist)
+        total_questions = db.query(func.count(models.Question.id)).scalar() or 0
 
     # Helper to count answered responses for an assessment
     def _answered_count(a_id: int) -> int:
@@ -623,73 +756,54 @@ def get_active_assessment(
             .scalar()
         ) or 0
 
-    # 1) Primary: latest assessment without a result yet (treat as not completed)
-    assessment = (
-        db.query(models.Assessment)
-        .outerjoin(
-            models.AssessmentResult,
-            models.AssessmentResult.assessment_id == models.Assessment.id,
-        )
-        .filter(models.Assessment.user_id == current_user.id)
-        .filter(models.AssessmentResult.id.is_(None))
-        .order_by(models.Assessment.id.desc())
-        .first()
-    )
-
-    # 2) Fallback: if none, pick the latest assessment where answered_count < total_questions
-    if not assessment and total_questions > 0:
-        latest = (
-            db.query(models.Assessment)
-            .filter(models.Assessment.user_id == current_user.id)
-            .order_by(models.Assessment.id.desc())
-            .limit(10)  # deterministic window: newest 10
-            .all()
-        )
-        for a in latest:
-            if _answered_count(a.id) < total_questions:
-                assessment = a
-                break
-
-    if not assessment:
-        return ActiveAssessmentResponse(active=False)
-
-    # 3) Count answered (0 is allowed now)
     answered_count = _answered_count(assessment.id)
 
-    # 4) Last answered question_id (only if any answered)
-    last_qid = None
-    if answered_count > 0:
-        last_qid = (
-            db.query(models.AssessmentResponse.question_id)
-            .filter(models.AssessmentResponse.assessment_id == assessment.id)
-            .order_by(models.AssessmentResponse.id.desc())
-            .limit(1)
-            .scalar()
-        )
-    # 5) Determine next_question_id deterministically (by Question.id ascending)
+    last_qid = (
+        db.query(models.AssessmentResponse.question_id)
+        .filter(models.AssessmentResponse.assessment_id == assessment.id)
+        .order_by(models.AssessmentResponse.id.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    # Determine next_question_id deterministically
     next_qid = None
 
     if total_questions > 0:
-        if answered_count == 0:
-            # First question in deterministic order
-            next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
-        else:
-            # Next question after the last answered one
-            # Note: question_id in responses may be stored as string; coerce safely
-            try:
-                last_qid_int = int(last_qid) if last_qid is not None else None
-            except (TypeError, ValueError):
-                last_qid_int = None
+        if persisted_ids:
+            if answered_count == 0:
+                next_qid = persisted_ids[0]
+            else:
+                try:
+                    last_qid_int = int(last_qid) if last_qid is not None else None
+                except (TypeError, ValueError):
+                    last_qid_int = None
 
-            if last_qid_int is not None:
-                next_qid = (
-                    db.query(models.Question.id)
-                    .filter(models.Question.id > last_qid_int)
-                    .order_by(models.Question.id.asc())
-                    .limit(1)
-                    .scalar()
-                )
-    is_complete = (next_qid is None) and (answered_count >= total_questions)            
+                if last_qid_int is not None and last_qid_int in persisted_ids:
+                    idx = persisted_ids.index(last_qid_int)
+                    next_qid = persisted_ids[idx + 1] if (idx + 1) < len(persisted_ids) else None
+                else:
+                    next_qid = persisted_ids[0]
+        else:
+            # Legacy fallback: global Question.id order
+            if answered_count == 0:
+                next_qid = db.query(models.Question.id).order_by(models.Question.id.asc()).limit(1).scalar()
+            else:
+                try:
+                    last_qid_int = int(last_qid) if last_qid is not None else None
+                except (TypeError, ValueError):
+                    last_qid_int = None
+
+                if last_qid_int is not None:
+                    next_qid = (
+                        db.query(models.Question.id)
+                        .filter(models.Question.id > last_qid_int)
+                        .order_by(models.Question.id.asc())
+                        .limit(1)
+                        .scalar()
+                    )
+
+    is_complete = (next_qid is None) and (answered_count >= total_questions)           
 
 
 

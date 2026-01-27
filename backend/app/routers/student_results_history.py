@@ -4,10 +4,12 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app import models, schemas
 from app.deps import get_db
 from app.auth.auth import get_current_active_user
+from app.routers.recommendations import get_recommendations
 
 
 router = APIRouter(tags=["Students"])
@@ -93,13 +95,32 @@ def get_student_results_history(
             )
         )
 
-    message = None
+    # 5) If no stored results exist, compute a fallback "latest" result
     if len(results) == 0:
-        message = "No results found"
+        computed = get_recommendations(student_id=student.id, db=db)
 
+        latest = schemas.StudentResultHistoryItem(
+            result_id=0,                 # ✅ required int (0 = computed fallback)
+            assessment_id=0,             # ✅ keep consistent; int required in many schemas
+            generated_at=datetime.utcnow(),  # ✅ required datetime
+            assessment_version="v1",
+            scoring_config_version="v1",
+            recommended_stream=None,
+            top_careers=computed.get("recommended_careers", []),
+            status="computed_fallback",
+        )
+
+        return schemas.StudentResultHistoryResponse(
+            student_id=student.id,
+            total_results=1,
+            results=[latest],
+            message="No stored results found. Showing computed latest results.",
+        )
+
+    # 6) Normal path: return stored results
     return schemas.StudentResultHistoryResponse(
         student_id=student.id,
         total_results=len(results),
         results=results,
-        message=message,
+        message=None,
     )

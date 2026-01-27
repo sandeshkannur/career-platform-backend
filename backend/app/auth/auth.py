@@ -171,6 +171,21 @@ def require_role(role: str):
 
     return role_checker
 
+def require_roles(allowed_roles: list[str]):
+    """
+    Dependency to restrict endpoint access by a list of roles.
+    Example:
+        Depends(require_roles(["admin", "counsellor"]))
+    """
+    def role_checker(current_user: models.User = Depends(get_current_active_user)):
+        if getattr(current_user, "role", None) not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation forbidden",
+            )
+        return current_user
+
+    return role_checker
 
 def get_current_active_admin(
     current_user: models.User = Depends(get_current_active_user),

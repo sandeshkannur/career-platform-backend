@@ -1,7 +1,7 @@
 # backend/app/services/scoring.py
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app import models
 
 
@@ -59,11 +59,13 @@ def compute_career_scores(db: Session, student_id: int) -> dict:
     student_scores = get_student_keyskill_scores(db, student_id)
 
     rows = db.execute(
-        select(
-            models.career_keyskill_association.c.career_id,
-            models.career_keyskill_association.c.keyskill_id,
-            models.career_keyskill_association.c.weight_percentage,
-        )
+        text("""
+            SELECT
+            career_id,
+            keyskill_id,
+            effective_weight_int AS weight_percentage
+            FROM career_keyskill_weights_effective_int_v
+        """)
     ).all()
 
     career_scores: dict[int, float] = {}
@@ -72,10 +74,7 @@ def compute_career_scores(db: Session, student_id: int) -> dict:
         if career_id not in career_scores:
             career_scores[career_id] = 0.0
 
-        # Guard: some legacy rows have NULL weight_percentage.
-        # Treat NULL as "no contribution" to avoid 500s.
-        if weight is None:
-            continue
+
 
         s_val = student_scores.get(keyskill_id, 0.0)
         career_scores[career_id] += s_val * float(weight)
