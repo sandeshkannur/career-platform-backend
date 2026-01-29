@@ -844,3 +844,38 @@ class ContextProfileUpdate(BaseModel):
     resource_access: Optional[str] = Field(None, max_length=32)
 
 ScorecardResponse.model_rebuild()
+
+# ----------------------------
+# PR12: Knowledge Pack Validation Schemas
+# ----------------------------
+
+class KnowledgePackStat(BaseModel):
+    """
+    Simple row-count snapshot for key tables.
+    """
+    table: str
+    rows: int
+
+
+class KnowledgePackIssue(BaseModel):
+    """
+    Neutral, supportive issue object (no red/green semantics).
+    `sample` is optional and can contain small example rows.
+    """
+    code: str
+    severity: Literal["info", "warning", "error"]
+    message: str
+    sample: Optional[Dict[str, Any]] = None
+
+
+class ValidateKnowledgePackResponse(BaseModel):
+    """
+    PR12 output contract:
+    - status is stable: "ok" or "has_issues"
+    - generated_at is UTC timestamp
+    - stats and issues provide the governance spine snapshot
+    """
+    status: Literal["ok", "has_issues"]
+    generated_at: datetime
+    stats: List[KnowledgePackStat]
+    issues: List[KnowledgePackIssue]
