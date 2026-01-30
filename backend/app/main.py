@@ -167,7 +167,9 @@ from app.routers import (
     admin,
     assessments,
     scorecard,
+    content,
 )
+
 from app.routers.key_skills import router as key_skills_router
 
 # ✅ B5 router (student questions random)
@@ -239,6 +241,8 @@ api_v1.include_router(consent_router, prefix="", tags=["Consent"])
 
 # B14: Student report endpoint (read-only, ownership enforced)
 api_v1.include_router(reports_router, prefix="", tags=["Reports"])
+
+api_v1.include_router(content.router, prefix="/content", tags=["Content"])
 
 # --- Mount /v1 on app ---
 app.include_router(api_v1)

@@ -8,7 +8,7 @@ from fastapi import (
 )
 import io
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text,select
 from sqlalchemy.exc import IntegrityError
 import csv
 from io import StringIO
@@ -30,6 +30,7 @@ from app.models import (
     User as UserModel,
     career_keyskill_association,
     Question,
+    ExplainabilityContent,
     
 )
 from app.schemas import (
@@ -44,6 +45,8 @@ from app.schemas import (
     AdminQuestionBulkResponse,
     AdminQuestionBulkErrorEntry,
     ValidateKnowledgePackResponse,
+    ExplainabilityUploadResult,
+    ExplainabilityUploadRowError,
 )
 from app.auth.auth import require_role, get_current_active_user
 from app.services.knowledge_pack_validation import run_validate_knowledge_pack
@@ -1574,3 +1577,119 @@ async def upload_aq_studentskill_weights(
 
     db.commit()
     return {"ok": True, "inserted": inserted, "errors": []}
+
+# ============================================================
+# PR16. upload_explainability_language_pack
+# ============================================================
+
+@router.post("/upload-explainability-language-pack", response_model=ExplainabilityUploadResult)
+def upload_explainability_language_pack(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    PR16: Admin bulk upload for explainability CMS copy.
+    - Versioned + locale-aware upsert by (version, locale, explanation_key)
+    - Student-safe text only (no analytics)
+    - CSV decoded with utf-8-sig to handle Excel BOM
+    """
+    # Basic file validation
+    if not file.filename.lower().endswith(".csv"):
+        return ExplainabilityUploadResult(
+            total_rows=0, inserted=0, updated=0, skipped=0,
+            errors=[ExplainabilityUploadRowError(row=0, error="Only .csv files are supported")]
+        )
+
+    raw = file.file.read()
+    try:
+        decoded = raw.decode("utf-8-sig")
+    except Exception:
+        return ExplainabilityUploadResult(
+            total_rows=0, inserted=0, updated=0, skipped=0,
+            errors=[ExplainabilityUploadRowError(row=0, error="Unable to decode file as utf-8 / utf-8-sig")]
+        )
+
+    reader = csv.DictReader(io.StringIO(decoded))
+
+    required_cols = {"version", "locale", "explanation_key", "text"}
+    if not reader.fieldnames or not required_cols.issubset(set([h.strip() for h in reader.fieldnames])):
+        return ExplainabilityUploadResult(
+            total_rows=0, inserted=0, updated=0, skipped=0,
+            errors=[ExplainabilityUploadRowError(
+                row=0,
+                error=f"Missing required columns. Required: {sorted(list(required_cols))}"
+            )]
+        )
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+    errors = []
+    total_rows = 0
+
+    # Helper: normalize boolean
+    def parse_bool(val):
+        if val is None:
+            return True
+        s = str(val).strip().lower()
+        if s == "":
+            return True
+        if s in {"true", "1", "yes", "y"}:
+            return True
+        if s in {"false", "0", "no", "n"}:
+            return False
+        # unknown values -> treat as True but record warning via skipped? keep minimal
+        return True
+
+    # Process rows (row index = 2 because DictReader row1 is header)
+    for idx, row in enumerate(reader, start=2):
+        total_rows += 1
+
+        version = (row.get("version") or "").strip()
+        locale = (row.get("locale") or "").strip()
+        explanation_key = (row.get("explanation_key") or "").strip()
+        text_val = (row.get("text") or "").strip()
+        is_active = parse_bool(row.get("is_active"))
+
+        # Validate required fields
+        if not version or not locale or not explanation_key or not text_val:
+            skipped += 1
+            errors.append(ExplainabilityUploadRowError(
+                row=idx,
+                error="Missing one of required fields: version, locale, explanation_key, text"
+            ))
+            continue
+
+        # Upsert by unique key
+        existing = db.execute(
+            select(ExplainabilityContent).where(
+                ExplainabilityContent.version == version,
+                ExplainabilityContent.locale == locale,
+                ExplainabilityContent.explanation_key == explanation_key,
+            )
+        ).scalars().first()
+
+        if existing:
+            existing.text = text_val
+            existing.is_active = is_active
+            updated += 1
+        else:
+            db.add(ExplainabilityContent(
+                version=version,
+                locale=locale,
+                explanation_key=explanation_key,
+                text=text_val,
+                is_active=is_active,
+            ))
+            inserted += 1
+
+    db.commit()
+
+    return ExplainabilityUploadResult(
+        total_rows=total_rows,
+        inserted=inserted,
+        updated=updated,
+        skipped=skipped,
+        errors=errors,
+    )
+

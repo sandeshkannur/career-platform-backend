@@ -548,6 +548,33 @@ class StudentScorecardResponse(BaseModel):
     facet_evidence_blocks: List["ScorecardFacetEvidenceBlock"] = Field(default_factory=list)
 
     message: Optional[str] = None
+# =========================================================
+# PR16: Explainability CMS (versioned + locale-aware copy)
+# =========================================================
+
+
+class ExplainabilityUploadRowError(BaseModel):
+    row: int
+    error: str
+
+
+class ExplainabilityUploadResult(BaseModel):
+    total_rows: int
+    inserted: int
+    updated: int
+    skipped: int
+    errors: List[ExplainabilityUploadRowError] = []
+
+
+class ExplainabilityContentItem(BaseModel):
+    explanation_key: str
+    text: str
+
+
+class ExplainabilityContentResponse(BaseModel):
+    version: str
+    locale: str
+    items: List[ExplainabilityContentItem]
 
 
 # ===============================

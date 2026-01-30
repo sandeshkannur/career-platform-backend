@@ -582,3 +582,38 @@ class QuestionFacetTag(Base):
     # Optional relationships (safe/additive)
     question = relationship("Question", backref="facet_tags")
     facet = relationship("AQFacet", backref="question_tags")
+
+# =========================================================
+# PR16: CMS-backed explainability content (versioned + locale-aware)
+# =========================================================
+
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.sql import func
+
+class ExplainabilityContent(Base):
+    __tablename__ = "explainability_content"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Content version pin (e.g., "v1")
+    version = Column(String(32), nullable=False, index=True)
+
+    # Locale code (e.g., "en", "kn-IN")
+    locale = Column(String(20), nullable=False, index=True)
+
+    # Stable lookup key used by frontend/backend projections
+    explanation_key = Column(String(120), nullable=False, index=True)
+
+    # Student-safe copy only (no analytics)
+    text = Column(Text, nullable=False)
+
+    # Active flag so we can deactivate copy without deleting
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Audit-friendly timestamp
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("version", "locale", "explanation_key", name="uq_explainability_content_v_l_k"),
+    )
+
