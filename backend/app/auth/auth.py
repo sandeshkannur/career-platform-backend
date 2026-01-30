@@ -171,11 +171,13 @@ def require_role(role: str):
 
     return role_checker
 
-def require_roles(allowed_roles: list[str]):
+def require_roles(*allowed_roles: str):
     """
-    Dependency to restrict endpoint access by a list of roles.
-    Example:
-        Depends(require_roles(["admin", "counsellor"]))
+    Dependency to restrict endpoint access by roles.
+
+    Usage:
+        Depends(require_roles("admin"))
+        Depends(require_roles("admin", "counsellor"))
     """
     def role_checker(current_user: models.User = Depends(get_current_active_user)):
         if getattr(current_user, "role", None) not in allowed_roles:
@@ -186,6 +188,9 @@ def require_roles(allowed_roles: list[str]):
         return current_user
 
     return role_checker
+# Convenience aliases (module-level, no indentation)
+require_admin = require_role("admin")
+require_admin_or_counsellor = require_roles("admin", "counsellor")
 
 def get_current_active_admin(
     current_user: models.User = Depends(get_current_active_user),

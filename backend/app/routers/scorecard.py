@@ -7,7 +7,12 @@ from sqlalchemy import text
 import re
 
 from app import deps, models, schemas
-from app.auth.auth import get_current_active_user, require_roles
+from app.auth.auth import (
+    get_current_active_user,
+    require_admin,
+    require_admin_or_counsellor,
+)
+
 
 from app.services.scoring import (
     compute_career_scores,
@@ -22,9 +27,7 @@ from app.services.evidence import compute_assessment_evidence
 router = APIRouter(
     prefix="/analytics/scorecard",
     tags=["Scorecard"],
-    dependencies=[Depends(get_current_active_user)],
 )
-
 def _compute_scorecard_payload(student_id: int, db: Session) -> dict:
     
     """
@@ -292,7 +295,7 @@ def build_pr6_explainability_blocks(evidence: dict | None) -> dict:
         "top_aqs": top_aqs,
         "facet_evidence_blocks": facet_evidence_blocks,
     }
-@router.get("/admin/{student_id}", dependencies=[Depends(require_roles(["admin", "editor"]))])
+@router.get("/admin/{student_id}", dependencies=[Depends(require_admin_or_counsellor)])
 def get_scorecard_admin(
     student_id: int,
     db: Session = Depends(deps.get_db),

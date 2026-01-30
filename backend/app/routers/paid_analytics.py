@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app import deps, schemas
-from app.auth.auth import get_current_active_user
+from app.auth.auth import require_admin_or_counsellor
 
 from app.services.explanations import build_full_explanation
 from app.services.scoring import (
@@ -16,7 +16,7 @@ from app.services.scoring import (
 router = APIRouter(
     prefix="/paid-analytics",
     tags=["Paid Analytics"],
-    dependencies=[Depends(get_current_active_user)],  # keep your existing auth
+    dependencies=[Depends(require_admin_or_counsellor)],
 )
 
 

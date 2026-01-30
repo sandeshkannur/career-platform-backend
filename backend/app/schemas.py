@@ -77,7 +77,7 @@ class QuestionFacetTagUploadRow(BaseModel):
 # ===============================
 
 class RoleChange(BaseModel):
-    role: Literal["admin", "student", "editor"]
+    role: Literal["admin", "student", "counsellor", "editor"]
 
 
 class GuardianAssign(BaseModel):
