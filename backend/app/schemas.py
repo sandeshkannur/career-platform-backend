@@ -470,7 +470,7 @@ class ScorecardResponse(BaseModel):
     # raw scoring useful for charts
     cluster_scores: Dict[int, float] = Field(default_factory=dict)
     career_scores: Dict[int, float] = Field(default_factory=dict)
-    
+
     # PR5: additive explainability evidence (computed-on-read)
     evidence: Optional["AssessmentEvidenceBlock"] = None
 
@@ -482,7 +482,72 @@ class ScorecardResponse(BaseModel):
     message: Optional[str] = None
 
 
+# ===============================
+# PR15: SCORECARD RESPONSE (STUDENT-SAFE VIEW)
+# - No numeric fields (no score, no normalized, no cluster_scores, no career_scores)
+# - Evidence remains traceable but WITHOUT counts
+# ===============================
 
+class StudentKeySkillView(BaseModel):
+    keyskill_id: int
+    name: str
+    tier: str  # qualitative label only (e.g., "High")
+    cluster_id: Optional[int] = None
+    cluster_name: Optional[str] = None
+
+
+class StudentScorecardCluster(BaseModel):
+    cluster_id: int
+    cluster_name: str
+    top_keyskills: List[str] = Field(default_factory=list)
+    explanation: str
+
+
+class StudentScorecardCareer(BaseModel):
+    career_id: int
+    career_name: str
+    top_keyskills: List[str] = Field(default_factory=list)
+    explanation: str
+
+
+# --- Student-safe evidence (no counts) ---
+class StudentFacetEvidenceItem(BaseModel):
+    facet_code: str
+    facet_name_en: str
+    aq_code: str
+    aq_name_en: str
+    question_codes: List[str] = Field(default_factory=list)
+
+
+class StudentAQEvidenceSummaryItem(BaseModel):
+    aq_code: str
+    aq_name_en: str
+    facet_codes: List[str] = Field(default_factory=list)
+    question_codes: List[str] = Field(default_factory=list)
+
+
+class StudentAssessmentEvidenceBlock(BaseModel):
+    facet_evidence: List[StudentFacetEvidenceItem] = Field(default_factory=list)
+    aq_evidence_summary: List[StudentAQEvidenceSummaryItem] = Field(default_factory=list)
+
+
+class StudentScorecardResponse(BaseModel):
+    student_id: int
+
+    # student-safe insights (no numbers)
+    clusters: List[StudentScorecardCluster] = Field(default_factory=list)
+    careers: List[StudentScorecardCareer] = Field(default_factory=list)
+    keyskills: List[StudentKeySkillView] = Field(default_factory=list)
+
+    # PR5 evidence but student-safe (no counts)
+    evidence: Optional[StudentAssessmentEvidenceBlock] = None
+
+    # PR6 blocks reused (already student-safe)
+    top_facets: List["ScorecardFacetExplainBlock"] = Field(default_factory=list)
+    top_aqs: List["ScorecardAQExplainBlock"] = Field(default_factory=list)
+    facet_evidence_blocks: List["ScorecardFacetEvidenceBlock"] = Field(default_factory=list)
+
+    message: Optional[str] = None
 
 
 # ===============================
