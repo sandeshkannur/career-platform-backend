@@ -162,7 +162,10 @@ def get_current_active_user(
 
 def require_role(role: str):
     def role_checker(current_user: models.User = Depends(get_current_active_user)):
-        if getattr(current_user, "role", None) != role:
+        current_role = (getattr(current_user, "role", None) or "").strip().lower()
+        required_role = (role or "").strip().lower()
+
+        if current_role != required_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operation forbidden",
@@ -180,7 +183,10 @@ def require_roles(*allowed_roles: str):
         Depends(require_roles("admin", "counsellor"))
     """
     def role_checker(current_user: models.User = Depends(get_current_active_user)):
-        if getattr(current_user, "role", None) not in allowed_roles:
+        current_role = (getattr(current_user, "role", None) or "").strip().lower()
+        allowed = {r.strip().lower() for r in allowed_roles if r is not None}
+
+        if current_role not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Operation forbidden",
