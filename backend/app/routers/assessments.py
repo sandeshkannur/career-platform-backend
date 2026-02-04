@@ -1,6 +1,6 @@
 # app/routers/assessments.py
 
-from typing import List, Dict
+from typing import List, Dict, Set
 
 from fastapi import (
     APIRouter,
@@ -252,7 +252,48 @@ def _persist_assessment_questions(
         )
 
     db.commit()
+    
+def _get_allowed_question_ids_for_assessment(db: Session, assessment_id: int) -> Set[int]:
+    """
+    Returns the set of question_ids that belong to this assessment's pool (assessment_questions).
+    Deterministic: pool is the single source of truth.
+    """
+    rows = (
+        db.query(models.AssessmentQuestion.question_id)
+        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
+        .all()
+    )
+    return {int(r[0]) for r in rows}
 
+
+def _enforce_membership_on_persisted_responses(db: Session, assessment_id: int) -> None:
+    """
+    PR34 hard gate: ensure every persisted assessment_responses.question_id belongs to the pool.
+    Protects scoring determinism (even if bad rows are inserted via legacy paths/tests).
+    """
+    allowed_qids = _get_allowed_question_ids_for_assessment(db=db, assessment_id=assessment_id)
+    if not allowed_qids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Assessment has no question set. Start assessment first.",
+        )
+
+    persisted = (
+        db.query(models.AssessmentResponse.question_id)
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .all()
+    )
+    persisted_qids = {int(r[0]) for r in persisted}
+
+    invalid = sorted(persisted_qids - allowed_qids)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Persisted responses contain question_ids outside this assessment's pool",
+                "out_of_pool_question_ids": invalid,
+            },
+        )
 def _ensure_context_profile_for_assessment(
     db: Session,
     assessment: models.Assessment,
@@ -535,18 +576,19 @@ def submit_responses(
     # ------------------------------------------------------
     # PR33: Pre-fetch allowed question_ids for this assessment (membership check)
     # ------------------------------------------------------
-    allowed_qids = {
-        row[0]
-        for row in db.query(models.AssessmentQuestion.question_id)
-        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
-        .all()
-    }
+    allowed_qids = _get_allowed_question_ids_for_assessment(db=db, assessment_id=assessment_id)
     if not allowed_qids:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Assessment has no question set. Start assessment first.",
         )
     try:
+        unknown_question_ids: List[int] = []
+        out_of_pool_question_ids: List[int] = []
+
+        # Hold only valid + insertable responses (do NOT insert until validation passes)
+        to_insert: List[Dict] = []
+
         for r in responses:
             # 1) If idempotency_key was already used for this assessment, treat as replay-success
             if r.idempotency_key:
@@ -563,9 +605,10 @@ def submit_responses(
                 if existing:
                     # Replay: do NOT insert; continue to next response in the batch
                     continue
+
             # ------------------------------------------------------
-            # PR33: Validate question_id exists + belongs to this assessment's question set.
-            # Persist canonical question_code deterministically.
+            # PR34/PR33: Validate question_id exists + belongs to this assessment's question set.
+            # Collect ALL invalid IDs (do not fail-fast).
             # ------------------------------------------------------
             q = (
                 db.query(models.Question)
@@ -573,16 +616,12 @@ def submit_responses(
                 .first()
             )
             if not q:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Unknown question_id: {r.question_id}",
-                )
+                unknown_question_ids.append(int(r.question_id))
+                continue
 
-            if r.question_id not in allowed_qids:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"question_id {r.question_id} is not part of assessment_id {assessment_id}",
-                )
+            if int(r.question_id) not in allowed_qids:
+                out_of_pool_question_ids.append(int(r.question_id))
+                continue
 
             canonical_code = (q.question_code or "").strip()
             if not canonical_code:
@@ -605,6 +644,29 @@ def submit_responses(
             # 2) Skip if this question was already answered (offline replay batch safety)
             if int(r.question_id) in existing_qids:
                 continue
+
+            # Defer insert until after validation passes for the whole batch
+            to_insert.append(
+                {"r": r, "canonical_code": canonical_code}
+            )
+
+        # If ANY invalids exist, raise ONE 422 with lists (PR34 requirement)
+        if unknown_question_ids or out_of_pool_question_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "One or more question_ids are invalid for this assessment",
+                    "unknown_question_ids": sorted(set(unknown_question_ids)),
+                    "out_of_pool_question_ids": sorted(set(out_of_pool_question_ids)),
+                },
+            )
+
+        # ------------------------------------------------------
+        # All good: perform inserts (preserve existing PR32 behaviour)
+        # ------------------------------------------------------
+        for item in to_insert:
+            r = item["r"]
+            canonical_code = item["canonical_code"]
 
             # ------------------------------------------------------
             # PR32: enforce canonical answer scale and persist numeric answer_value
@@ -766,6 +828,14 @@ def submit_assessment(
     db=db,
     assessment=assessment,
     current_user_id=current_user.id,
+    )
+
+    # ------------------------------------------------------
+    # PR34: Ensure persisted answers belong to this assessment's question pool (hard gate)
+    # ------------------------------------------------------
+    _enforce_membership_on_persisted_responses(
+        db=db,
+        assessment_id=assessment_id,
     )
 
     # ------------------------------------------------------
