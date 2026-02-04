@@ -351,8 +351,11 @@ class AssessmentResponse(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     assessment_id = Column(Integer, ForeignKey("assessments.id"), nullable=False, index=True)
-    question_id = Column(String, nullable=False)
+    # PR33: stable external identifier (do NOT depend on UI / language)
+    question_code = Column(String, nullable=False)
     answer = Column(String, nullable=False)
+    # PR33: strict FK-first identifier for joins, scoring, explainability
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False, index=True)
 
     answer_value = Column(Integer, nullable=True)
 

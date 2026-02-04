@@ -332,9 +332,10 @@ class AssessmentOut(BaseModel):
 
 
 class AssessmentResponseCreate(BaseModel):
-    question_id: str = Field(
-        ...,
-        json_schema_extra={"example": "V1_Q1"},
+    question_id: int = Field(
+    ...,
+    ge=1,
+    json_schema_extra={"example": 101},
     )
     # ✅ canonical/external id (preferred for analytics + long-term stability)
     question_code: Optional[str] = Field(
@@ -357,14 +358,12 @@ class AssessmentResponseCreate(BaseModel):
 
 
 class AssessmentResponseOut(BaseModel):
-    question_id: str = Field(
-        ...,
-        json_schema_extra={"example": "V1_Q1"},
-    )
-    answer: str = Field(
-        ...,
-        json_schema_extra={"example": "5"},
-    )
+    id: int
+    question_id: int = Field(..., ge=1, json_schema_extra={"example": 101})
+    question_code: str = Field(..., json_schema_extra={"example": "AQ01_F1_Q001"})
+    answer: str = Field(..., json_schema_extra={"example": "5"})
+    answer_value: Optional[int] = None
+    idempotency_key: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 class AssessmentResultOut(BaseModel):
