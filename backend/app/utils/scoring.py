@@ -42,15 +42,48 @@ def compute_skill_scores(assessment_id: int, db: Session, dataset_version: str =
     return dict(skill_scores)
 
 def assign_tiers(skill_scores: dict) -> dict:
+    """
+    Tiering on a 0..100 scale (aligned to scaled_0_100 and HSI outputs).
+
+    Low:    < 40
+    Medium: 40..69.999...
+    High:   >= 70
+
+    NOTE: keys are returned as strings for stable JSON output.
+    """
     tiers = {}
     for skill_id, score in skill_scores.items():
-        if score >= 8:
-            tiers[skill_id] = "High"
-        elif score >= 4:
-            tiers[skill_id] = "Medium"
+        s = float(score)
+
+        if s < 40.0:
+            tiers[str(skill_id)] = "Low"
+        elif s < 70.0:
+            tiers[str(skill_id)] = "Medium"
         else:
-            tiers[skill_id] = "Low"
+            tiers[str(skill_id)] = "High"
+
     return tiers
+
+def assign_tiers_scaled_0_100(skill_scores: dict) -> dict:
+    """
+    Tiering for scaled_0_100 (0..100).
+    Low: <40, Medium: 40-69.999..., High: >=70
+    """
+    tiers = {}
+    for skill_id, score in skill_scores.items():
+        try:
+            s = float(score)
+        except (TypeError, ValueError):
+            s = 0.0
+
+        if s >= 70.0:
+            tiers[str(skill_id)] = "High"
+        elif s >= 40.0:
+            tiers[str(skill_id)] = "Medium"
+        else:
+            tiers[str(skill_id)] = "Low"
+    return tiers
+
     
 def compute_hsi_v1(raw_skill_score: float, cps_score: float) -> float:
     """

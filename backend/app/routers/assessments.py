@@ -22,7 +22,7 @@ from app.schemas_resume import ActiveAssessmentResponse
 from app.schemas_response_submit import SubmitResponseOut
 
 # Scoring logic for assessments (kept)
-from app.utils.scoring import compute_skill_scores, assign_tiers, compute_cps_v1, compute_hsi_v1
+from app.utils.scoring import compute_skill_scores, assign_tiers_scaled_0_100, compute_cps_v1, compute_hsi_v1
 
 # Existing
 from app.services.tier_mapping import apply_keyskill_tiers
@@ -31,6 +31,7 @@ from app.services.tier_mapping import apply_keyskill_tiers
 from app.services.assessment_scoring_service import (
     compute_and_persist_skill_scores,
     EmptyResponsesError,
+    MissingQSSWError,
 )
 
 # B8 keyskill sync service (NEW)
@@ -41,6 +42,7 @@ from app.services.analytics_orchestrator_service import recompute_student_analyt
 
 # Step 5 fix: background task must create its own session
 from app.database import SessionLocal
+
 
 
 router = APIRouter(
@@ -83,32 +85,6 @@ def _get_answer_scale_for_assessment(db: Session, assessment_id: int) -> tuple[i
 
     return int(scale[0]), int(scale[1]), str(assessment_version)
 
-
-def _parse_and_validate_answer_value(
-    answer_raw: str,
-    min_value: int,
-    max_value: int,
-    question_id: str,
-) -> int:
-    """
-    PR32: Convert answer to int and enforce range.
-    Student-safe: no weights/scores exposed, only min/max.
-    """
-    try:
-        answer_int = int(str(answer_raw).strip())
-    except Exception:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid answer for question_id={question_id}. Must be an integer in range {min_value}..{max_value}.",
-        )
-
-    if answer_int < min_value or answer_int > max_value:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Answer out of range for question_id={question_id}. Allowed range is {min_value}..{max_value}.",
-        )
-
-    return answer_int
 
 def _parse_and_validate_answer_value(
     answer_raw: str,
@@ -382,8 +358,8 @@ def _persist_hsi_for_assessment_skill_scores(
     )
 
     for row in rows:
-        # Use the same scale as tiering currently uses in this file: avg_raw (1–5-ish)
-        row.hsi_score = compute_hsi_v1(float(row.avg_raw), float(cps_score_used))
+        # Use the same scale as tiering: scaled_0_100 (0..100)
+        row.hsi_score = compute_hsi_v1(float(row.scaled_0_100), float(cps_score_used))
         row.cps_score_used = float(cps_score_used)
         row.assessment_version = assessment_version
 
@@ -420,72 +396,7 @@ def _load_skill_score_map_from_db(
         }
 
     return {"skills": skills}
-def _ensure_context_profile_for_assessment(
-    db: Session,
-    assessment: models.Assessment,
-    current_user_id: int,
-) -> models.ContextProfile:
-    """
-    World-class baseline:
-    - ContextProfile MUST exist for every assessment attempt.
-    - If missing, create a placeholder snapshot with 'unknown' fields.
-    - This keeps scoring deterministic + enables UI to later prompt "Confirm/Update context".
-    - Idempotent: if already exists, return it.
-    """
-    existing = (
-        db.query(models.ContextProfile)
-        .filter(models.ContextProfile.assessment_id == assessment.id)
-        .first()
-    )
-    if existing:
-        return existing
 
-    # Map users.id -> students.id (profile id)
-    student_profile = (
-        db.query(models.Student)
-        .filter(models.Student.user_id == current_user_id)
-        .first()
-    )
-    if not student_profile:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Student profile not found for this user. Create student profile before submitting assessment.",
-        )
-
-    # Placeholder values: intentionally neutral + safe for low-friction flows
-    ses_band = "unknown"
-    education_board = "unknown"
-    support_level = "unknown"
-    resource_access = "unknown"
-
-    # CPS will compute deterministically; if your compute_cps_v1 doesn't handle 'unknown',
-    # you can safely fallback to 0.0
-    try:
-        cps_score = compute_cps_v1(
-            ses_band=ses_band,
-            education_board=education_board,
-            support_level=support_level,
-            resource_access=resource_access,
-        )
-    except Exception:
-        cps_score = 0.0
-
-    row = models.ContextProfile(
-        assessment_id=assessment.id,
-        student_id=student_profile.id,
-        assessment_version=assessment.assessment_version,
-        scoring_config_version=assessment.scoring_config_version,
-        ses_band=ses_band,
-        education_board=education_board,
-        support_level=support_level,
-        resource_access=resource_access,
-        cps_score=float(cps_score),
-    )
-
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
 # ----------------------------------------------------------
 # Start a new assessment
 # ----------------------------------------------------------
@@ -860,6 +771,15 @@ def submit_assessment(
             status_code=status.HTTP_409_CONFLICT,
             detail="No responses submitted for this assessment"
         )
+    except MissingQSSWError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "missing_qssw",
+                "assessment_id": e.assessment_id,
+                "missing_question_ids": e.missing_question_ids,
+            },
+        )
     except IntegrityError:
         # Idempotency: scores likely already persisted for this assessment+config.
         db.rollback()
@@ -901,10 +821,9 @@ def submit_assessment(
 
     # If no student_profile exists, we skip analytics recompute safely (no exception).
 
-    #  Tiering base (keep exactly as-is for response contract)
-    # avg_raw is on your existing 1–5-ish scale, so thresholds in assign_tiers still make sense.
+    # Tiering base: use scaled_0_100 (0..100) for stable, world-class tier thresholds
     scores_for_tiers: Dict[int, float] = {
-        int(skill_id): float(data["avg_raw"])
+        int(skill_id): float(data["scaled_0_100"])
         for skill_id, data in skill_score_map["skills"].items()
     }
 
@@ -933,8 +852,8 @@ def submit_assessment(
         for skill_id, raw_score in scores_for_tiers.items()
     }
 
-    #  Tiers now reflect HSI-adjusted values
-    tiers = assign_tiers(scores_for_tiers_hsi)
+    # Beta policy: tiers come from SCALED (0..100), not HSI
+    tiers = assign_tiers_scaled_0_100(scores_for_tiers)
 
     # 2) Upsert into AssessmentResult (update if exists, else create)
     from datetime import datetime
@@ -963,10 +882,18 @@ def submit_assessment(
     db.commit()
     db.refresh(result)
 
+    is_student = str(getattr(current_user, "role", "")).lower() == "student"
+
+    if is_student:
+        return {
+            "assessment_id": assessment_id,
+            "tiers": tiers,
+        }
+
     return {
         "assessment_id": assessment_id,
-        "skill_scores": scores_for_tiers,  #  unchanged response contract (raw)
-        "tiers": tiers,                    #  tiers now HSI-based
+        "skill_scores": scores_for_tiers,  # admin/counsellor only
+        "tiers": tiers,
     }
 
 # ----------------------------------------------------------
@@ -1207,9 +1134,9 @@ def generate_result(assessment_id: int, student_id: int) -> None:
             
         # If no student_profile exists, skip safely.
 
-        #  Option A: use avg_raw (1–5 scale) so assign_tiers thresholds apply correctly
+        # Tiering base: use scaled_0_100 (0..100) for stable, world-class tier thresholds
         scores_for_tiers: Dict[int, float] = {
-            int(skill_id): float(data["avg_raw"])
+            int(skill_id): float(data["scaled_0_100"])
             for skill_id, data in skill_score_map["skills"].items()
         }
 
@@ -1235,7 +1162,9 @@ def generate_result(assessment_id: int, student_id: int) -> None:
             skill_id: compute_hsi_v1(raw_score, cps_score)
             for skill_id, raw_score in scores_for_tiers.items()
         }
-        tiers = assign_tiers(scores_for_tiers_hsi)
+
+        # Beta policy: tiers come from SCALED (0..100), not HSI
+        tiers = assign_tiers_scaled_0_100(scores_for_tiers)
 
         # Save assessment result
         result = models.AssessmentResult(
