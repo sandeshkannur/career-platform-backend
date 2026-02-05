@@ -385,7 +385,220 @@ async def upload_career_keyskill_map(
     logger.info(f"upload-career-keyskill-map: inserted={inserted}, skipped={skipped}")
     return {"status": "success", "inserted": inserted}
 
+# ============================================================
+# PR36. UPLOAD CAREER ↔ KEYSKILL WEIGHTS (STRICT SUM=100)
+# ============================================================
 
+@router.post(
+    "/upload-career-keyskill-weights",
+    summary="Bulk upload Career ↔ KeySkill weights via CSV (sum=100 per career, strict)",
+)
+async def upload_career_keyskill_weights(
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """
+    PR36:
+    - Admin-only (router dependency already enforces)
+    - CSV headers (exact): career_id,keyskill_id,weight_percentage
+    - Validates:
+        * ints for ids + weight
+        * weight >= 0
+        * all (career_id) exist in careers.id
+        * all (keyskill_id) exist in keyskills.id
+        * per career_id: SUM(weight_percentage) == 100
+    - Behavior:
+        * If ANY career fails sum=100 => 400 with list of bad careers
+        * If ok => idempotent upsert into career_keyskill_association
+        * dry_run=true => validate + count inserts/updates, but DO NOT write
+    """
+
+    # --- file type checks ---
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+
+    raw = await file.read()
+
+    # Robust decoding: prefer UTF-8 BOM-safe, fallback to UTF-16 (Excel common)
+    try:
+        text_csv = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text_csv = raw.decode("utf-16")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to decode CSV. Please save as CSV UTF-8 (Comma delimited).",
+            )
+
+    if not text_csv.strip():
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+
+    reader = csv.DictReader(io.StringIO(text_csv))
+
+    expected_headers = ["career_id", "keyskill_id", "weight_percentage"]
+    actual_headers = reader.fieldnames or []
+    if actual_headers != expected_headers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Header mismatch. Expected exactly {expected_headers} but got {actual_headers}",
+        )
+
+    rows = []
+    errors = []
+
+    # ---------------------------
+    # PASS 1: Parse + row-level validation (no DB writes)
+    # ---------------------------
+    for line_no, r in enumerate(reader, start=2):
+        try:
+            career_id_raw = (r.get("career_id") or "").strip()
+            keyskill_id_raw = (r.get("keyskill_id") or "").strip()
+            weight_raw = (r.get("weight_percentage") or "").strip()
+
+            if not career_id_raw or not keyskill_id_raw or weight_raw == "":
+                raise ValueError("career_id, keyskill_id, weight_percentage are required")
+
+            career_id = int(career_id_raw)
+            keyskill_id = int(keyskill_id_raw)
+            weight = int(weight_raw)
+
+            if weight < 0:
+                raise ValueError("weight_percentage must be >= 0")
+
+            rows.append(
+                {
+                    "rownum": line_no,
+                    "career_id": career_id,
+                    "keyskill_id": keyskill_id,
+                    "weight_percentage": weight,
+                }
+            )
+
+        except Exception as e:
+            errors.append({"row": line_no, "error": str(e), "raw": dict(r)})
+
+    if errors:
+        raise HTTPException(status_code=400, detail={"ok": False, "errors": errors})
+
+    # ---------------------------
+    # PASS 2: Duplicate detection inside file (career_id, keyskill_id)
+    # ---------------------------
+    seen = set()
+    dupes = []
+    for r in rows:
+        k = (r["career_id"], r["keyskill_id"])
+        if k in seen:
+            dupes.append({"row": r["rownum"], "error": "Duplicate (career_id, keyskill_id) in file"})
+        seen.add(k)
+
+    if dupes:
+        raise HTTPException(status_code=400, detail={"ok": False, "errors": dupes})
+
+    # ---------------------------
+    # PASS 3: FK existence checks (careers + keyskills)
+    # ---------------------------
+    career_ids = sorted({r["career_id"] for r in rows})
+    keyskill_ids = sorted({r["keyskill_id"] for r in rows})
+
+    career_ok_rows = db.execute(
+        text("SELECT id FROM careers WHERE id = ANY(:ids)"),
+        {"ids": career_ids},
+    ).fetchall()
+    career_ok = {x[0] for x in career_ok_rows}
+
+    keyskill_ok_rows = db.execute(
+        text("SELECT id FROM keyskills WHERE id = ANY(:ids)"),
+        {"ids": keyskill_ids},
+    ).fetchall()
+    keyskill_ok = {x[0] for x in keyskill_ok_rows}
+
+    fk_errors = []
+    for r in rows:
+        if r["career_id"] not in career_ok:
+            fk_errors.append({"row": r["rownum"], "field": "career_id", "error": f"career_id not found: {r['career_id']}"})
+        if r["keyskill_id"] not in keyskill_ok:
+            fk_errors.append({"row": r["rownum"], "field": "keyskill_id", "error": f"keyskill_id not found: {r['keyskill_id']}"})
+
+    if fk_errors:
+        raise HTTPException(status_code=400, detail={"ok": False, "errors": fk_errors})
+
+    # ---------------------------
+    # PASS 4: Group-level validation (sum=100 per career)
+    # ---------------------------
+    sums = {}
+    for r in rows:
+        sums[r["career_id"]] = sums.get(r["career_id"], 0) + r["weight_percentage"]
+
+    bad = [{"career_id": cid, "sum_weight": s} for cid, s in sums.items() if s != 100]
+    if bad:
+        # strict policy: reject the entire upload if any career fails
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error_code": "CAREER_KEYSILL_WEIGHT_SUM_NOT_100",
+                "message": "One or more careers have weight_percentage sum != 100",
+                "bad_careers": sorted(bad, key=lambda x: x["career_id"]),
+            },
+        )
+
+    # ---------------------------
+    # PASS 5: Upsert (idempotent)
+    # ---------------------------
+    inserted = 0
+    updated = 0
+
+    for r in rows:
+        # check existence for accurate inserted vs updated counts
+        exists = db.execute(
+            text(
+                """
+                SELECT 1
+                FROM career_keyskill_association
+                WHERE career_id = :c AND keyskill_id = :k
+                LIMIT 1
+                """
+            ),
+            {"c": r["career_id"], "k": r["keyskill_id"]},
+        ).first()
+
+        if dry_run:
+            if exists:
+                updated += 1
+            else:
+                inserted += 1
+            continue
+
+        db.execute(
+            text(
+                """
+                INSERT INTO career_keyskill_association (career_id, keyskill_id, weight_percentage)
+                VALUES (:career_id, :keyskill_id, :weight_percentage)
+                ON CONFLICT (career_id, keyskill_id)
+                DO UPDATE SET weight_percentage = EXCLUDED.weight_percentage
+                """
+            ),
+            r,
+        )
+
+        if exists:
+            updated += 1
+        else:
+            inserted += 1
+
+    if not dry_run:
+        db.commit()
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "inserted": inserted,
+        "updated": updated,
+        "total_rows": len(rows),
+    }
 # ============================================================
 # ✅ B3. API-BASED QUESTION CREATION (JSON)
 # ============================================================
