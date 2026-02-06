@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.auth.auth import get_current_active_user
 from app.deps import get_db
+from app.projections.student_safe import project_student_safe
+
 
 router = APIRouter(
     tags=["Students"],
@@ -124,7 +126,7 @@ def get_student_dashboard(
 
     keyskill_analytics: Optional[schemas.StudentDashboardKeyskillAnalytics] = None
     if analytics_row and getattr(analytics_row, "payload_json", None):
-        payload = analytics_row.payload_json
+        payload = project_student_safe(analytics_row.payload_json)
 
         # Safe extraction with defaults (deterministic)
         if isinstance(payload, dict):
@@ -151,7 +153,7 @@ def get_student_dashboard(
         top_skills = [
             schemas.StudentDashboardTopSkill(
                 skill_id=s.skill_id,
-                scaled_0_100=float(s.scaled_0_100),
+                scaled_0_100=None,
                 tier=getattr(s, "tier", None),
                 assessment_id=s.assessment_id,
             )

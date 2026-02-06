@@ -9,6 +9,7 @@ from app import models
 from app.deps import get_db
 from app.services.scoring import compute_career_scores
 from app.auth.auth import get_current_active_user, require_roles
+from app.projections.student_safe import project_student_safe
 
 router = APIRouter(
     tags=["Recommendations"],
@@ -221,7 +222,7 @@ def get_recommendations(
     payload = _compute_recommendations_payload(student_id=student_id, db=db)
 
     # ✅ IMPORTANT: Student endpoint returns sanitized payload only
-    return _sanitize_recommendations_payload(payload)
+    return project_student_safe(_sanitize_recommendations_payload(payload))
 
     
 

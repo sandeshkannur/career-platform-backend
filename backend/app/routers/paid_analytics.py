@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import deps, schemas
 from app.auth.auth import require_admin_or_counsellor, require_role
+from app.projections.student_safe import project_student_safe
 
 from app.services.explanations import build_full_explanation
 from app.services.scoring import (

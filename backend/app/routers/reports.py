@@ -24,6 +24,7 @@ from app import models, schemas
 from app.auth.auth import get_current_active_user
 from app.deps import get_db
 from app.services import report_builder
+from app.projections.student_safe import project_student_safe
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -133,7 +134,7 @@ def get_scorecard_report(
         generated_at=datetime.now(timezone.utc),
         pdf_download_url=None,
         message="Report generated",
-        report_payload=doc.model_dump(),  # canonical contract as dict
+        report_payload=project_student_safe(doc.model_dump()) if enforced_view == "student" else doc.model_dump(),
     )
 
 @router.get("/{student_id}", response_model=schemas.ReportResponse)
@@ -194,7 +195,7 @@ def get_student_report(
     # ---------------------------------------------------------
     # 5) Build response payload (JSON + PDF placeholders)
     # ---------------------------------------------------------
-    payload_json: Dict[str, Any] = analytics_row.payload_json or {}
+    payload_json: Dict[str, Any] = project_student_safe(analytics_row.payload_json or {})
 
     report_payload: Dict[str, Any] = {
         "analytics": payload_json,
