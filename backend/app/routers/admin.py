@@ -5,12 +5,15 @@ from fastapi import (
     File,
     HTTPException,
     Form,
+    Query,
 )
 import io
 from sqlalchemy.orm import Session
 from sqlalchemy import text,select
 from sqlalchemy.exc import IntegrityError
 import csv
+from openpyxl import load_workbook
+import os
 from io import StringIO
 import logging
 from typing import List, Dict
@@ -52,6 +55,8 @@ from app.schemas import (
 from app.auth.auth import require_role, get_current_active_user
 from app.services.knowledge_pack_validation import run_validate_knowledge_pack
 
+from app.services.skill_keyskill_ingest import ingest_skill_keyskill_map
+
 # ✅ B2 shared validation import
 from app.validators.question_ingestion import (
     validate_question_row,
@@ -66,6 +71,36 @@ router = APIRouter(
     dependencies=[Depends(require_role("admin"))],
 )
 
+@router.post(
+    "/upload-skill-keyskill-map",
+    summary="PR46: Upload StudentSkill → KeySkill semantic map from Excel (dry_run supported)",
+)
+async def upload_skill_keyskill_map(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    # Basic file validation
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx Excel files are accepted")
+
+    # Read file bytes ONCE
+    content = await file.read()
+
+    # Guard: empty bytes usually means stream was consumed or file invalid
+    if not content or len(content) < 200:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file content is empty/invalid. Please re-select the .xlsx file and try again.",
+        )
+
+    try:
+        return ingest_skill_keyskill_map(db=db, file_bytes=content, dry_run=dry_run)
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 def _parse_optional_int(value):
     """
