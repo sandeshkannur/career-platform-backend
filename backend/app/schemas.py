@@ -1080,3 +1080,28 @@ class ValidateKnowledgePackResponse(BaseModel):
     generated_at: datetime
     stats: List[KnowledgePackStat]
     issues: List[KnowledgePackIssue]
+# ----------------------------
+# PR39: Explainability Key Taxonomy Validation Schemas
+# ----------------------------
+
+class ExplainabilityKeyIssue(BaseModel):
+    """
+    PR39 issue object for explainability_key taxonomy checks.
+    """
+    code: str
+    severity: Literal["info", "warning", "error"]
+    message: str
+    sample: Optional[Dict[str, Any]] = None
+
+
+class ValidateExplainabilityKeysResponse(BaseModel):
+    """
+    PR39 output contract:
+    - status is stable: "ok" or "has_issues"
+    - generated_at is UTC timestamp
+    - issues provides governance-style findings
+    """
+    status: Literal["ok", "has_issues"]
+    generated_at: datetime
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    issues: List[ExplainabilityKeyIssue] = Field(default_factory=list)

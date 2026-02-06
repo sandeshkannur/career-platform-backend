@@ -51,9 +51,13 @@ from app.schemas import (
     ValidateKnowledgePackResponse,
     ExplainabilityUploadResult,
     ExplainabilityUploadRowError,
+    ValidateExplainabilityKeysResponse,
 )
 from app.auth.auth import require_role, get_current_active_user
-from app.services.knowledge_pack_validation import run_validate_knowledge_pack
+from app.services.knowledge_pack_validation import (
+    run_validate_knowledge_pack,
+    run_validate_explainability_keys,
+)
 
 from app.services.skill_keyskill_ingest import ingest_skill_keyskill_map
 
@@ -1087,6 +1091,33 @@ def validate_knowledge_pack_csv(
         _iter_rows(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=knowledge_pack_validation_issues.csv"},
+    )
+
+@router.get(
+    "/validate-explainability-keys",
+    response_model=ValidateExplainabilityKeysResponse,
+    tags=["Admin Panel", "admin"],
+    summary="PR39: Validate explainability_key taxonomy + coverage (read-only)",
+)
+def validate_explainability_keys(
+    version: str | None = Query(default=None),
+    locale: str | None = Query(default=None),
+    required_families: str | None = Query(
+        default=None,
+        description="Comma-separated family list (default: AQ,FACET,SKILL,CAREER,CLUSTER)",
+    ),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    families = None
+    if required_families:
+        families = [x.strip().upper() for x in required_families.split(",") if x.strip()]
+
+    return run_validate_explainability_keys(
+        db=db,
+        version=version,
+        locale=locale,
+        required_families=families,
     )
 # ============================================================
 # PR45. QSSW UPLOAD

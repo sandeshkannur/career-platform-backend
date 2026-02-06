@@ -1000,3 +1000,201 @@ def run_validate_knowledge_pack(db: Session):
         stats=stats,
         issues=issues,
     )
+
+def run_validate_explainability_keys(
+    db: Session,
+    version: Optional[str] = None,
+    locale: Optional[str] = None,
+    required_families: Optional[List[str]] = None,
+):
+    """
+    PR39: Explainability Key Taxonomy validation (admin-only, read-only).
+    - Detect invalid key formats / unknown families / missing family coverage.
+    - Designed to be tolerant of legacy keys already present in DB.
+    """
+    # IMPORTANT: local import prevents circular import / startup failures
+    from app.schemas import (  # noqa: WPS433
+        ValidateExplainabilityKeysResponse,
+        ExplainabilityKeyIssue,
+    )
+
+    import re  # local import keeps module import-safe
+
+    issues: List[ExplainabilityKeyIssue] = []
+
+    # Defaults: keep beta surface minimal and consistent with PR39
+    families = required_families or ["AQ", "FACET", "SKILL", "CAREER", "CLUSTER"]
+
+    # ---- Key patterns (tolerant but governance-friendly) ----
+    # 1) Canonical uppercase dotted taxonomy: AQ.INTRO.001, FACET.CONFIDENCE.001, CAREER.SOFTWARE.OVERVIEW
+    canonical_re = re.compile(r"^(AQ|FACET|SKILL|CAREER|CLUSTER)(\.[A-Z0-9_]+)+$")
+
+    # 2) Legacy constant keys: CLUSTER_SUMMARY, CAREER_TOP_MATCH (present in your DB today)
+    legacy_constant_re = re.compile(r"^[A-Z0-9_]+$")
+
+    # 3) Existing paid narrative keys (present in your DB today)
+    paid_re = re.compile(r"^paid\.(career|cluster)\.[a-z0-9_]+$")
+
+    # ---- Build WHERE clause deterministically ----
+    where_parts = []
+    params: Dict[str, Any] = {}
+
+    if version:
+        where_parts.append("version = :version")
+        params["version"] = version
+
+    if locale:
+        where_parts.append("locale = :locale")
+        params["locale"] = locale
+
+    where_sql = ""
+    if where_parts:
+        where_sql = "WHERE " + " AND ".join(where_parts)
+
+    # ---- Pull keys (read-only) ----
+    rows = (
+        db.execute(
+            text(
+                f"""
+                SELECT version, locale, explanation_key
+                FROM explainability_content
+                {where_sql}
+                ORDER BY version, locale, explanation_key
+                """
+            ),
+            params,
+        )
+        .mappings()
+        .all()
+    )
+
+    # Defensive duplicate check (DB uniqueness should prevent this, but keep report resilient)
+    dupes = (
+        db.execute(
+            text(
+                f"""
+                SELECT version, locale, explanation_key, COUNT(*) AS cnt
+                FROM explainability_content
+                {where_sql}
+                GROUP BY version, locale, explanation_key
+                HAVING COUNT(*) > 1
+                ORDER BY cnt DESC, version, locale, explanation_key
+                LIMIT 50
+                """
+            ),
+            params,
+        )
+        .mappings()
+        .all()
+    )
+
+    if dupes:
+        issues.append(
+            ExplainabilityKeyIssue(
+                code="explainability.duplicate_key",
+                severity="error",
+                message="Duplicate explanation_key rows detected within the same (version, locale). This should not happen if the UNIQUE constraint is healthy.",
+                sample={"examples": [dict(r) for r in dupes]},
+            )
+        )
+
+    # ---- Format + family checks ----
+    invalid_format_examples = []
+    unknown_family_examples = []
+    present_families = set()
+
+    for r in rows:
+        key = (r.get("explanation_key") or "").strip()
+        if not key:
+            invalid_format_examples.append({"explanation_key": key})
+            continue
+
+        # Family detection (for dotted keys only)
+        family = key.split(".", 1)[0] if "." in key else None
+
+        # Treat paid.* namespaces as coverage for canonical families
+        # so beta coverage checks don't force duplicate key creation.
+        if family == "paid":
+            # paid.career.* -> CAREER, paid.cluster.* -> CLUSTER
+            parts = key.split(".")
+            if len(parts) >= 2:
+                if parts[1] == "career":
+                    present_families.add("CAREER")
+                elif parts[1] == "cluster":
+                    present_families.add("CLUSTER")
+        else:
+            if family:
+                present_families.add(family)
+
+        # Validate against tolerant set of patterns
+        if canonical_re.match(key):
+            # Canonical keys: enforce allowed family list
+            fam = key.split(".", 1)[0]
+            if fam not in families:
+                unknown_family_examples.append({"explanation_key": key, "family": fam})
+            continue
+
+        if legacy_constant_re.match(key):
+            # Keep as legacy acceptable (no family requirement)
+            continue
+
+        if paid_re.match(key):
+            # Keep as acceptable existing tiered namespace
+            continue
+
+        # Otherwise it is invalid format
+        invalid_format_examples.append({"explanation_key": key})
+
+    if invalid_format_examples:
+        issues.append(
+            ExplainabilityKeyIssue(
+                code="explainability.invalid_format",
+                severity="warning",
+                message=(
+                    "Some explanation_key values do not match expected formats. "
+                    "Preferred canonical format: FAMILY.UPPERCASE_SEGMENTS (e.g., AQ.INTRO.001)."
+                ),
+                sample={"examples": invalid_format_examples[:25]},
+            )
+        )
+
+    if unknown_family_examples:
+        issues.append(
+            ExplainabilityKeyIssue(
+                code="explainability.unknown_family",
+                severity="warning",
+                message=(
+                    "Some dotted keys use a FAMILY prefix outside the allowed set for this validator run."
+                ),
+                sample={"allowed_families": families, "examples": unknown_family_examples[:25]},
+            )
+        )
+
+    # ---- Missing required families (coverage) ----
+    # Only evaluate for canonical families; legacy constants and paid.* do not contribute to coverage.
+    missing = [f for f in families if f not in present_families]
+    if missing:
+        issues.append(
+            ExplainabilityKeyIssue(
+                code="explainability.missing_required_families",
+                severity="warning",
+                message="Missing one or more required key families for the selected filter scope.",
+                sample={"missing_families": missing, "present_families": sorted(list(present_families))},
+            )
+        )
+
+    status = "ok" if len([i for i in issues if i.severity in ("warning", "error")]) == 0 else "has_issues"
+
+    return ValidateExplainabilityKeysResponse(
+        status=status,
+        generated_at=datetime.utcnow(),
+        filters={
+            "version": version,
+            "locale": locale,
+            "required_families": families,
+            "rows_scanned": len(rows),
+        },
+        issues=issues,
+    )
+
+
