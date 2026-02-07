@@ -633,6 +633,25 @@ class ExplainabilityContentResponse(BaseModel):
     locale: str
     items: List[ExplainabilityContentItem]
 
+# =========================================================
+# PR41: Explainability locale coverage (i18n gate)
+# =========================================================
+
+class ExplainabilityCoverageResponse(BaseModel):
+    """
+    Admin-only gate output.
+    - Compares baseline locale (default 'en') vs target locale for the same version.
+    - Counts are for ACTIVE keys only (is_active = true).
+    """
+    version: str
+    locale: str
+    baseline_locale: str = "en"
+
+    baseline_active_keys: int
+    target_active_keys: int
+
+    missing_count: int
+    missing_keys: List[str] = Field(default_factory=list)
 
 # ===============================
 # QUESTION SCHEMA

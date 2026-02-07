@@ -52,6 +52,7 @@ from app.schemas import (
     ExplainabilityUploadResult,
     ExplainabilityUploadRowError,
     ValidateExplainabilityKeysResponse,
+    ExplainabilityCoverageResponse,
 )
 from app.auth.auth import require_role, get_current_active_user
 from app.services.knowledge_pack_validation import (
@@ -1119,6 +1120,85 @@ def validate_explainability_keys(
         locale=locale,
         required_families=families,
     )
+# ============================================================
+# PR41 — Locale Coverage Validation (i18n Gate)
+# ============================================================
+@router.get(
+    "/explainability-coverage",
+    response_model=schemas.ExplainabilityCoverageResponse,
+    tags=["Admin Panel", "admin"],
+    summary="PR41: Coverage report for missing explanation keys per locale/version (baseline en)",
+)
+def explainability_coverage(
+    version: str = Query(..., min_length=1, max_length=32),
+    locale: str = Query(..., min_length=1, max_length=20),
+    baseline_locale: str = Query("en", min_length=1, max_length=20),
+    format: str = Query("json", description="json | csv"),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    if getattr(current_user, "role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # ---- Pull active keys for baseline + target ----
+    baseline_rows = (
+        db.execute(
+            select(ExplainabilityContent.explanation_key)
+            .where(
+                ExplainabilityContent.version == version,
+                ExplainabilityContent.locale == baseline_locale,
+                ExplainabilityContent.is_active == True,  # noqa: E712
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    target_rows = (
+        db.execute(
+            select(ExplainabilityContent.explanation_key)
+            .where(
+                ExplainabilityContent.version == version,
+                ExplainabilityContent.locale == locale,
+                ExplainabilityContent.is_active == True,  # noqa: E712
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    baseline_keys = set([k.strip() for k in baseline_rows if k])
+    target_keys = set([k.strip() for k in target_rows if k])
+
+    missing = sorted(list(baseline_keys - target_keys))
+
+    payload = schemas.ExplainabilityCoverageResponse(
+        version=version,
+        locale=locale,
+        baseline_locale=baseline_locale,
+        baseline_active_keys=len(baseline_keys),
+        target_active_keys=len(target_keys),
+        missing_count=len(missing),
+        missing_keys=missing,
+    )
+
+    # ---- CSV projection (exportable) ----
+    if (format or "").lower() == "csv":
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["version", "baseline_locale", "target_locale", "missing_explanation_key"])
+        for k in missing:
+            w.writerow([version, baseline_locale, locale, k])
+
+        buf.seek(0)
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="explainability_coverage_{version}_{locale}.csv"'
+            },
+        )
+
+    return payload
 # ============================================================
 # PR45. QSSW UPLOAD
 # ============================================================
