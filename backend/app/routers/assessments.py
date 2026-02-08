@@ -30,6 +30,7 @@ from app.services.tier_mapping import apply_keyskill_tiers
 # B7 scoring service (NEW)
 from app.services.assessment_scoring_service import (
     compute_and_persist_skill_scores,
+    compute_contrib_trace_seed_only,
     EmptyResponsesError,
     MissingQSSWError,
 )
@@ -48,6 +49,65 @@ from app.database import SessionLocal
 router = APIRouter(
     tags=["Assessments"],
 )
+
+def build_contrib_trace_v1(
+    assessment_id: int,
+    assessment_version: str | None,
+    scoring_config_version: str | None,
+    content_version: str | None,
+    contrib_trace_seed: dict | None = None,
+    locale: str | None = None,
+) -> dict:
+    """
+    PR44: Internal-only deterministic contribution trace (v1).
+    IMPORTANT:
+    - IDs only (no names, no localized text)
+    - Deterministic keys
+    - Safe to store, never returned to students
+    NOTE: This is a minimal skeleton; we will enrich it in the next step using scoring intermediates.
+    """
+    seed = contrib_trace_seed or {}
+
+    # PR44: seed-first deterministic trace
+    # If seed is present, we MUST not recompute or query DB.
+    questions = seed.get("questions") or []
+    student_skill_agg = seed.get("student_skill_agg") or []
+
+    # Enforce deterministic ordering (even if caller forgot)
+    try:
+        questions = sorted(questions, key=lambda x: int(x.get("question_id", 0)))
+    except Exception:
+        pass
+
+    try:
+        student_skill_agg = sorted(student_skill_agg, key=lambda x: int(x.get("student_skill_id", 0)))
+    except Exception:
+        pass
+
+    # Safe generated_at: keep seed value if present; otherwise create one
+    from datetime import datetime
+    generated_at = seed.get("generated_at") or seed.get("generatedAt") or datetime.utcnow().isoformat()
+
+    return {
+        "trace_version": "v1",
+        "generated_at": generated_at,
+
+        "assessment_id": assessment_id,
+        "assessment_version": assessment_version,
+        "scoring_config_version": scoring_config_version,
+        "content_version": content_version,
+        "locale": locale,  # optional; must never affect scoring
+
+        # PR44: seed-driven internals (deterministic, IDs only)
+        "normalizations_applied": seed.get("normalizations_applied", []),
+        "questions": questions,
+        "facet_agg": [],
+        "aq_agg": [],
+        "student_skill_agg": student_skill_agg,
+        "keyskill_agg": [],
+        "career_agg": [],
+        "cluster_agg": [],
+    }
 
 def _get_answer_scale_for_assessment(db: Session, assessment_id: int) -> tuple[int, int, str]:
     """
@@ -758,6 +818,8 @@ def submit_assessment(
     )
 
     scoring_config_version = assessment.scoring_config_version  # pinned, backend authoritative
+    # PR44: seed is optional, but must be deterministic when present
+    contrib_trace_seed = None
 
     # ✅ B7: compute + persist student_skill_scores first
     try:
@@ -766,6 +828,7 @@ def submit_assessment(
             assessment_id=assessment_id,
             student_id=current_user.id,
         )
+
     except EmptyResponsesError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -794,6 +857,18 @@ def submit_assessment(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Skill scores already exist but could not be loaded"
             )
+        
+        # PR44 Step 3.2: compute trace seed even when scores already exist (idempotency path)
+        contrib_trace_seed = compute_contrib_trace_seed_only(
+            db=db,
+            assessment_id=assessment_id,
+            student_id=current_user.id,
+            scoring_config_version=scoring_config_version,
+        )
+
+    # PR44: capture deterministic trace seed from scoring output (normal path)
+    if contrib_trace_seed is None:
+        contrib_trace_seed = skill_score_map.get("contrib_trace_seed") if isinstance(skill_score_map, dict) else None
 
     #  B8: sync persisted skill scores → student_keyskill_map (analytics)
     # NOTE: This does NOT change endpoint response; it is internal side-effect.
@@ -873,6 +948,13 @@ def submit_assessment(
         existing.assessment_version = assessment.assessment_version
         existing.scoring_config_version = assessment.scoring_config_version
         existing.content_version = assessment.assessment_version
+        existing.contrib_trace = build_contrib_trace_v1(
+            assessment_id=assessment_id,
+            assessment_version=assessment.assessment_version,
+            scoring_config_version=assessment.scoring_config_version,
+            content_version=assessment.assessment_version,
+            contrib_trace_seed=contrib_trace_seed,
+        )
         result = existing
     else:
         result = models.AssessmentResult(
@@ -884,6 +966,13 @@ def submit_assessment(
             assessment_version=assessment.assessment_version,
             scoring_config_version=assessment.scoring_config_version,
             content_version=assessment.assessment_version,
+            contrib_trace=build_contrib_trace_v1(
+                assessment_id=assessment_id,
+                assessment_version=assessment.assessment_version,
+                scoring_config_version=assessment.scoring_config_version,
+                content_version=assessment.assessment_version,
+                contrib_trace_seed=contrib_trace_seed,
+            ),
         )
         db.add(result)
 
@@ -1099,6 +1188,9 @@ def generate_result(assessment_id: int, student_id: int) -> None:
         scoring_config_version = assessment.scoring_config_version
         assessment_version_used = assessment.assessment_version
 
+        # PR44: seed is optional, but must be deterministic when present
+        contrib_trace_seed = None
+
         #  B7 scoring
         try:
             skill_score_map = compute_and_persist_skill_scores(
@@ -1117,7 +1209,20 @@ def generate_result(assessment_id: int, student_id: int) -> None:
                 scoring_config_version=scoring_config_version,
             )
             if not skill_score_map.get("skills"):
+                # If still empty, surface a deterministic server error (not a crash loop).
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Skill scores already exist but could not be loaded"
+                )
                 return
+            
+        # PR44: compute trace seed even when scores already exist (idempotency path)
+        contrib_trace_seed = compute_contrib_trace_seed_only(
+            db=db,
+            assessment_id=assessment_id,
+            student_id=student_id,
+            scoring_config_version=scoring_config_version,
+        )
 
         #  B8: sync persisted skill scores → student_keyskill_map (analytics)
         sync_skill_scores_to_keyskills(
@@ -1184,6 +1289,13 @@ def generate_result(assessment_id: int, student_id: int) -> None:
             assessment_version=assessment.assessment_version,
             scoring_config_version=assessment.scoring_config_version,
             content_version=assessment.assessment_version,
+            contrib_trace=build_contrib_trace_v1(
+                assessment_id=assessment_id,
+                assessment_version=assessment.assessment_version,
+                scoring_config_version=assessment.scoring_config_version,
+                content_version=assessment.assessment_version,
+                contrib_trace_seed=contrib_trace_seed,
+            ),
         )
         
         db.add(result)

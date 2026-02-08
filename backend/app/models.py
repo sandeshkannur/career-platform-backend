@@ -430,6 +430,10 @@ class AssessmentResult(Base):
     # per-skill tiers/levels produced by scoring/analytics
     # Example: {"Creativity": "Intermediate", "Numerical Reasoning": "Advanced"}
     skill_tiers = Column(JSON_TYPE, nullable=True)
+    
+    # PR44: Internal-only deterministic contribution trace for QA/audit (never returned to students)
+    contrib_trace = Column(JSON_TYPE, nullable=True)
+
     # =========================================================
     # PR40: Version bundle pinning (auditability)
     # These are pinned at report generation time.

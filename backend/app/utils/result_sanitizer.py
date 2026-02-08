@@ -19,6 +19,9 @@ def sanitize_student_result_payload(payload: dict) -> dict:
     Keeps structure identical so UI doesn't break.
     """
     out = dict(payload)
+    
+    # PR44: Never leak internal contribution trace to students
+    out.pop("contrib_trace", None)
 
     results = out.get("results") or []
     for r in results:
