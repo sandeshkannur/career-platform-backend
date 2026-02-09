@@ -475,6 +475,7 @@ def create_assessment(
         user_id=current_user.id,
         assessment_version="v1",
         scoring_config_version="v1",
+        question_pool_version="v1",
     )
     db.add(assessment)
     db.commit()
@@ -1011,7 +1012,47 @@ def get_active_assessment(
     - Fallback: if none, latest assessment where answered_count < total_questions
     - Allows answered_count = 0 (fresh assessment) to be active
     """
+    # ------------------------------------------------------
+    # Pick the active assessment deterministically (A3)
+    # ------------------------------------------------------
+    # Primary: latest assessment for this user where no assessment_result exists yet
+    assessment = (
+        db.query(models.Assessment)
+        .outerjoin(
+            models.AssessmentResult,
+            models.AssessmentResult.assessment_id == models.Assessment.id,
+        )
+        .filter(
+            models.Assessment.user_id == current_user.id,
+            models.AssessmentResult.id.is_(None),
+        )
+        .order_by(models.Assessment.id.desc())
+        .first()
+    )
 
+    # Fallback: latest assessment for this user (even if partially answered)
+    if assessment is None:
+        assessment = (
+            db.query(models.Assessment)
+            .filter(models.Assessment.user_id == current_user.id)
+            .order_by(models.Assessment.id.desc())
+            .first()
+        )
+
+    # If still none, no assessments exist
+    if assessment is None:
+        return ActiveAssessmentResponse(
+            active=False,
+            assessment_id=None,
+            assessment_version=None,
+            scoring_config_version=None,
+            answered_count=0,
+            last_answered_question_id=None,
+            next_question_id=None,
+            total_questions=0,
+            is_complete=False,
+        )
+    
     # Total questions (75-question aware)
     persisted_ids = [
         r[0]
@@ -1091,6 +1132,7 @@ def get_active_assessment(
         assessment_id=assessment.id,
         assessment_version=getattr(assessment, "assessment_version", None),
         scoring_config_version=getattr(assessment, "scoring_config_version", None),
+        question_pool_version=getattr(assessment, "question_pool_version", None),
         answered_count=int(answered_count),
         last_answered_question_id=str(last_qid) if last_qid is not None else None,
         next_question_id=str(next_qid) if next_qid is not None else None,

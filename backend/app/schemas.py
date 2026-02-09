@@ -389,6 +389,11 @@ class AssessmentOut(BaseModel):
     user_id: int
     submitted_at: datetime
 
+    # PR19: version pins (additive-only)
+    assessment_version: str
+    scoring_config_version: str
+    question_pool_version: str
+
     model_config = ConfigDict(from_attributes=True)
 
 

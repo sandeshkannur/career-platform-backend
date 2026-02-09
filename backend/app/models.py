@@ -366,6 +366,7 @@ class Assessment(Base):
 
     assessment_version = Column(String(32), nullable=False, default="v1", index=True)
     scoring_config_version = Column(String(32), nullable=False, default="v1", index=True)
+    question_pool_version = Column(String(32), nullable=False, default="v1", index=True)
 
     responses = relationship("AssessmentResponse", back_populates="assessment")
     result = relationship("AssessmentResult", uselist=False, back_populates="assessment")

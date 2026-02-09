@@ -7,6 +7,7 @@ class ActiveAssessmentResponse(BaseModel):
     assessment_id: Optional[int] = None
     assessment_version: Optional[str] = None
     scoring_config_version: Optional[str] = None
+    question_pool_version: Optional[str] = None
     answered_count: Optional[int] = None
     last_answered_question_id: Optional[str] = None
     next_question_id: Optional[str] = None
