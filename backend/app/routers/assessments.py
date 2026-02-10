@@ -8,6 +8,7 @@ from fastapi import (
     HTTPException,
     status,
     BackgroundTasks,
+    Query,
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +21,7 @@ from sqlalchemy import func
 from sqlalchemy import text
 from app.schemas_resume import ActiveAssessmentResponse
 from app.schemas_response_submit import SubmitResponseOut
+from app.schemas_assessment_questions import AssessmentQuestionsResponse
 
 # Scoring logic for assessments (kept)
 from app.utils.scoring import compute_skill_scores, assign_tiers_scaled_0_100, compute_cps_v1, compute_hsi_v1
@@ -1161,6 +1163,137 @@ def get_assessment(
         )
     return assessment
 
+@router.get(
+    "/{assessment_id}/questions",
+    response_model=AssessmentQuestionsResponse,
+    summary="Fetch the exact assessment-bound question set (student-safe)",
+)
+def get_assessment_questions(
+    assessment_id: int,
+    lang: str | None = Query(
+        None,
+        description="Optional language code: en, hi, ta (unsupported values fall back to en)",
+    ),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    # -----------------------------
+    # 1) Load assessment + RBAC gate
+    # -----------------------------
+    assessment = db.query(models.Assessment).get(assessment_id)
+
+    if not assessment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment not found",
+        )
+
+    # Admin can access any; student can only access own assessment.
+    # Keep privacy-safe behavior: non-owner student gets 404 (no existence leak).
+    if getattr(current_user, "role", None) != "admin":
+        if assessment.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assessment not found",
+            )
+
+    # -----------------------------------------------
+    # 2) Fetch canonical question set for this assessment
+    #    Deterministic ordering: question_id ASC
+    # -----------------------------------------------
+    aq_rows = (
+        db.query(models.AssessmentQuestion)
+        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
+        .order_by(models.AssessmentQuestion.question_id)
+        .all()
+    )
+
+    question_ids = [aq.question_id for aq in aq_rows]
+
+    if not question_ids:
+        return AssessmentQuestionsResponse(
+            assessment_version=assessment.assessment_version,
+            lang=lang,
+            lang_used="en",
+            count_returned=0,
+            questions=[],
+        )
+
+    # -----------------------------------------------
+    # 3) Load Question records in one batch
+    # -----------------------------------------------
+    q_rows = (
+        db.query(models.Question)
+        .filter(models.Question.id.in_(question_ids))
+        .all()
+    )
+    question_by_id = {q.id: q for q in q_rows}
+
+    # -----------------------------------------------
+    # 4) Load facet tags (facet_id) for these questions
+    # -----------------------------------------------
+    facet_rows = (
+        db.query(models.QuestionFacetTag)
+        .filter(models.QuestionFacetTag.question_id.in_(question_ids))
+        .all()
+    )
+
+    facet_tags_by_qid: dict[int, list[str]] = {}
+    for r in facet_rows:
+        facet_tags_by_qid.setdefault(r.question_id, []).append(r.facet_id)
+
+    # -----------------------------------------------
+    # 5) Locale logic (match existing Questions router pattern)
+    # -----------------------------------------------
+    LANG_FIELD_MAP = {
+        "en": "question_text_en",
+        "hi": "question_text_hi",
+        "ta": "question_text_ta",
+    }
+
+    requested_lang = (lang or "en").strip().lower()
+    if requested_lang not in LANG_FIELD_MAP:
+        lang_used = "en"
+        lang_field = LANG_FIELD_MAP["en"]
+    else:
+        lang_used = requested_lang
+        lang_field = LANG_FIELD_MAP[requested_lang]
+
+    # -----------------------------------------------
+    # 6) Build response in canonical order from assessment_questions
+    # -----------------------------------------------
+    questions_out = []
+
+    for aq in aq_rows:
+        q = question_by_id.get(aq.question_id)
+        if not q:
+            # Should not happen due to FK; skip safely instead of breaking runtime.
+            continue
+
+        text_in_lang = getattr(q, lang_field, None)
+
+        # Safe English fallback (and force lang_used to "en" if fallback triggers)
+        if text_in_lang is None or (isinstance(text_in_lang, str) and text_in_lang.strip() == ""):
+            text_in_lang = getattr(q, "question_text_en", "") or ""
+            lang_used = "en"
+
+        questions_out.append(
+            {
+                "question_id": str(q.id),
+                "question_code": aq.question_code or q.question_code or "",
+                "skill_id": q.skill_id,
+                "question_text": text_in_lang,
+                "facet_tags": facet_tags_by_qid.get(q.id, []),
+            }
+        )
+
+    return AssessmentQuestionsResponse(
+        assessment_version=assessment.assessment_version,
+        lang=lang,
+        lang_used=lang_used,
+        count_returned=len(questions_out),
+        questions=questions_out,
+    )
 
 # ----------------------------------------------------------
 #  Fetch computed results (+ tiers)
