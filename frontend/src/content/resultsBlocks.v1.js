@@ -41,8 +41,8 @@ export function getResultsBlocksV1({ result }) {
      * UI should resolve these keys via your locale pack / CMS resolver.
      */
     fitBands: getFitBandsV1(),
-
-        /**
+    
+    /**
      * Paid / Premium extensions (CMS-only for now).
      * UI decides when to render based on plan/tier.
      */

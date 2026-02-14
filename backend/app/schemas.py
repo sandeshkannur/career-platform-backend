@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union, Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr
 
@@ -847,10 +847,60 @@ class StudentAssessmentHistoryResponse(BaseModel):
     assessments: List[StudentAssessmentHistoryItem]
     message: Optional[str] = None
 
+# =========================
+# B12 — Student Results Blocks (Extensible, Global-ready)
+# - Additive-only contract: backend returns KEYS, not prose.
+# - UI renders with i18n / CMS packs later.
+# =========================
 
-# =========================
-# B12 — Student Results History (Read-only)
-# =========================
+class TopCareersBlock(BaseModel):
+    block_type: Literal["TOP_CAREERS"] = "TOP_CAREERS"
+    title_key: Optional[str] = "results.blocks.top_careers.title"
+    subtitle_key: Optional[str] = None
+    visibility: Literal["ALL"] = "ALL"
+    limit: int = 3
+
+    # Keep flexible for now because stored JSON shapes may vary during beta.
+    # Later we can tighten this to List[TopCareerItem].
+    items: List[Any] = Field(default_factory=list)
+
+
+class FacetInsightsBlock(BaseModel):
+    block_type: Literal["FACET_INSIGHTS"] = "FACET_INSIGHTS"
+    title_key: Optional[str] = "results.blocks.facet_insights.title"
+    subtitle_key: Optional[str] = None
+    visibility: Literal["PAID", "PREMIUM"] = "PAID"
+
+    # Keys only (localized via explainability language pack)
+    facet_keys: List[str] = Field(default_factory=list)
+
+
+class AssociatedQualitiesBlock(BaseModel):
+    block_type: Literal["ASSOCIATED_QUALITIES"] = "ASSOCIATED_QUALITIES"
+    title_key: Optional[str] = "results.blocks.associated_qualities.title"
+    subtitle_key: Optional[str] = None
+    visibility: Literal["PAID", "PREMIUM"] = "PAID"
+
+    # Keys only (localized via explainability language pack)
+    aq_keys: List[str] = Field(default_factory=list)
+
+class EmptyStateBlock(BaseModel):
+    block_type: Literal["EMPTY_STATE"] = "EMPTY_STATE"
+    title_key: Optional[str] = "results.blocks.empty.title"
+    body_key: Optional[str] = "results.blocks.empty.body"
+    visibility: Literal["ALL"] = "ALL"
+
+# Discriminated union for future extensibility.
+# Any new block can be added without breaking existing clients.
+ResultBlock = Annotated[
+    Union[
+        TopCareersBlock,
+        FacetInsightsBlock,
+        AssociatedQualitiesBlock,
+        EmptyStateBlock,
+    ],
+    Field(discriminator="block_type"),
+]
 
 class StudentResultHistoryItem(BaseModel):
     result_id: int
@@ -861,7 +911,14 @@ class StudentResultHistoryItem(BaseModel):
     scoring_config_version: str = Field(default="v1")
 
     recommended_stream: Optional[str] = None
+
+    # Backward-compatible (existing clients)
     top_careers: Optional[List[Any]] = None  # keep flexible (strings or small dicts)
+
+    # New extensible rendering contract (future-proof)
+    results_payload_version: str = Field(default="v1")
+    blocks: List[ResultBlock] = Field(default_factory=list)
+
     status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

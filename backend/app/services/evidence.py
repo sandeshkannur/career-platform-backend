@@ -13,7 +13,7 @@ WITH answered AS (
     q.question_code
   FROM assessment_responses ar
   JOIN questions q
-    ON q.id::text = ar.question_id
+    ON q.id = ar.question_id
   WHERE ar.assessment_id = :assessment_id
 ),
 tagged AS (
@@ -65,7 +65,7 @@ WITH answered AS (
     q.question_code
   FROM assessment_responses ar
   JOIN questions q
-    ON q.id::text = ar.question_id
+    ON q.id = ar.question_id
   WHERE ar.assessment_id = :assessment_id
 ),
 tagged AS (

@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import LoadingScreen from "./components/LoadingScreen";
 import GuardianVerifyPage from "./pages/guardian/GuardianVerifyPage";
 import StudentContextPage from "./pages/student/StudentContextPage";
+import DashboardLayout from "./layouts/DashboardLayout";
 
 /* ======================
    Lazy-loaded Pages
@@ -54,6 +55,7 @@ const StudentCareerDetailPage = lazy(() =>
   import("./pages/student/StudentCareerDetailPage")
 );
 const StudentReportPage = lazy(() => import("./pages/student/StudentReportPage"));
+const StudentProfilePage = lazy(() => import("./pages/student/StudentProfilePage"));
 
 /* ======================
    Fallback
@@ -86,7 +88,7 @@ export default function AppRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/guardian/verify" element={<GuardianVerifyPage />} />
-		<Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup" element={<SignupPage />} />
 
         {/* ======================
            Admin Routes
@@ -149,121 +151,37 @@ export default function AppRoutes() {
            Student Routes
            ====================== */}
         <Route
-          path="/student/dashboard"
+          path="/student"
           element={
             <ProtectedRoute allowRoles={["student"]}>
-              <StudentDashboardPage />
+              <DashboardLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Navigate to="/student/dashboard" replace />} />
 
-        <Route
-          path="/student/__probe2"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <div style={{ padding: 24 }}>STUDENT PROBE2 OK</div>
-            </ProtectedRoute>
-          }
-        />
+          <Route path="dashboard" element={<StudentDashboardPage />} />
 
-        <Route
-          path="/student/consent"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentConsentPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route path="__probe2" element={<div style={{ padding: 24 }}>STUDENT PROBE2 OK</div>} />
 
-        <Route
-          path="/student/onboarding"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentOnboardingPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/student/context"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentContextPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route path="consent" element={<StudentConsentPage />} />
+          <Route path="onboarding" element={<StudentOnboardingPage />} />
+          <Route path="context" element={<StudentContextPage />} />
 
-        <Route
-          path="/student/assessment"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentAssessmentIntroPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route path="assessment" element={<StudentAssessmentIntroPage />} />
 
-        <Route
-          path="/student/assessment/run/:attemptId"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentAssessmentRunPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route path="assessment/run/:attemptId" element={<StudentAssessmentRunPage />} />
+          <Route path="assessment/submit/:attemptId" element={<StudentAssessmentSubmitPage />} />
 
-        <Route
-          path="/student/assessment/submit/:attemptId"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentAssessmentSubmitPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/student/results"
-          element={<Navigate to="/student/results/latest" replace />}
-          
-        />
+          <Route path="results" element={<Navigate to="/student/results/latest" replace />} />
+          <Route path="results/latest" element={<StudentResultsPage />} />
+          <Route path="results/history" element={<StudentResultsHistoryPage />} />
 
-        <Route
-          path="/student/results/latest"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentResultsPage />
-            </ProtectedRoute>
-          }
-        />
+          <Route path="careers/:careerId" element={<StudentCareerDetailPage />} />
+          <Route path="profile" element={<StudentProfilePage />} />
+          <Route path="reports/:reportId" element={<StudentReportPage />} />
+        </Route>
 
-        <Route
-          path="/student/results/history"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentResultsHistoryPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/student/careers/:careerId"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentCareerDetailPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/student/reports/:reportId"
-          element={
-            <ProtectedRoute allowRoles={["student"]}>
-              <StudentReportPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* ======================
-           Friendly Aliases
-           ====================== */}
-        <Route path="/student" element={<Navigate to="/student/dashboard" replace />} />
 
         {/* ======================
            Catch-all

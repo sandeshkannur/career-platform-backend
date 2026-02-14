@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import SkeletonPage from "../../ui/SkeletonPage";
+
 import Button from "../../ui/Button";
+import useContent from "../../hooks/useContent";
 
 import { getQuestionPool } from "../../api/questions";
 import { deterministicPick } from "../../lib/deterministicPick";
@@ -29,6 +30,8 @@ const QUESTION_COUNT = 75;
 export default function StudentAssessmentRunPage() {
   const navigate = useNavigate();
   const { attemptId } = useParams();
+
+  const { t } = useContent("student.assessment.run");
 
   const storageKey = useMemo(() => {
     return `${DRAFT_PREFIX_V2}:${attemptId || "unknown"}`;
@@ -348,6 +351,9 @@ export default function StudentAssessmentRunPage() {
   const selected = currentId ? answers[currentId]?.answer : null;
   const isLast = index === QUESTIONS.length - 1;
 
+  const totalQuestions = QUESTIONS.length || 1;
+  const progressPct = Math.round(((index + 1) / totalQuestions) * 100);
+
   function choose(option) {
     if (!currentId) return;
     const now = new Date().toISOString();
@@ -418,155 +424,229 @@ export default function StudentAssessmentRunPage() {
 
   if (stillLoading) {
     return (
-      <SkeletonPage
-        title="Assessment in Progress"
-        subtitle="Loading your assessment…"
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() => navigate("/student/assessment")}
-          >
-            Back
-          </Button>
-        }
-      >
-        <p>Loading…</p>
-      </SkeletonPage>
+      <div className="mx-auto w-full max-w-5xl px-4 py-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold">
+              {t("title", "Assessment")}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              {t("loading.subtitle", "Loading your assessment…")}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <Button
+              variant="secondary"
+              onClick={() => navigate("/student/assessment")}
+            >
+              {t("actions.back", "Back")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-[var(--border)] bg-white p-4 text-sm">
+          {t("loading.body", "Loading…")}
+        </div>
+      </div>
     );
   }
 
   if (poolError) {
     return (
-      <SkeletonPage
-        title="Assessment in Progress"
-        subtitle="Unable to load questions."
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() => navigate("/student/assessment")}
-          >
-            Back
-          </Button>
-        }
-      >
-        <p>{poolError?.message || "Failed to load question pool."}</p>
-      </SkeletonPage>
+      <div className="mx-auto w-full max-w-5xl px-4 py-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold">
+              {t("title", "Assessment")}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              {t("error.subtitle", "Unable to load questions.")}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <Button
+              variant="secondary"
+              onClick={() => navigate("/student/assessment")}
+            >
+              {t("actions.back", "Back")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-[#f3b4b4] bg-[#fff6f6] p-4">
+          <div className="text-sm font-semibold">
+            {t("error.title", "Failed to load question pool")}
+          </div>
+          <div className="mt-1 text-sm text-[var(--text-muted)]">
+            {poolError?.message ||
+              t("error.fallback", "Failed to load question pool.")}
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!current || !currentId || !Array.isArray(currentOptions)) {
     return (
-      <SkeletonPage
-        title="Assessment in Progress"
-        subtitle="No questions available."
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() => navigate("/student/assessment")}
-          >
-            Back
-          </Button>
-        }
-      >
-        <p>Unable to load questions.</p>
-      </SkeletonPage>
+      <div className="mx-auto w-full max-w-5xl px-4 py-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold">
+              {t("title", "Assessment")}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              {t("empty.subtitle", "No questions available.")}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <Button
+              variant="secondary"
+              onClick={() => navigate("/student/assessment")}
+            >
+              {t("actions.back", "Back")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-[var(--border)] bg-white p-4 text-sm">
+          {t("empty.body", "Unable to load questions.")}
+        </div>
+      </div>
     );
   }
 
   return (
-    <SkeletonPage
-      title="Assessment in Progress"
-      subtitle="Answer honestly. There are no right or wrong answers."
-      actions={
-        <>
+    <div className="mx-auto w-full max-w-5xl px-4 py-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold">
+            {t("title", "Assessment")}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            {t(
+              "subtitle",
+              "Answer honestly. There are no right or wrong answers."
+            )}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
           <Button variant="secondary" onClick={handleBack}>
-            Back
+            {t("actions.back", "Back")}
           </Button>
           <Button variant="secondary" onClick={handleSave}>
-            Save
+            {t("actions.save", "Save")}
           </Button>
           <Button onClick={handleNext} disabled={!selected}>
-            {isLast ? "Submit" : "Next"}
+            {isLast
+              ? t("actions.submit", "Submit")
+              : t("actions.next", "Next")}
           </Button>
-        </>
-      }
-    >
-      <div style={{ maxWidth: 720, display: "grid", gap: 14 }}>
-        {/* Progress */}
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          Question {index + 1} of {QUESTIONS.length}
-          {attemptId ? (
-            <span style={{ marginLeft: 8, opacity: 0.6 }}>
-              • Attempt ID: {attemptId}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <div>
+            Question{" "}
+            <span className="font-medium text-[var(--text-primary)]">
+              {index + 1}
+            </span>{" "}
+            of{" "}
+            <span className="font-medium text-[var(--text-primary)]">
+              {QUESTIONS.length}
             </span>
-          ) : null}
+            {attemptId ? (
+              <span className="ml-2 opacity-80">
+                • Attempt ID: {attemptId}
+              </span>
+            ) : null}
+          </div>
+
+          <div>{progressPct}%</div>
+        </div>
+
+        <div className="mt-2 h-2 w-full rounded-full bg-[var(--border)]">
+          <div
+            className="h-2 rounded-full bg-[var(--brand-primary)] transition-all"
+            style={{ width: `${progressPct}%` }}
+          />
         </div>
 
         {/* A+ sync hint (neutral) */}
         {syncState.status !== "idle" ? (
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
+          <div className="mt-2 text-xs text-[var(--text-muted)]">
             {syncState.message}
           </div>
         ) : null}
+      </div>
 
-        {/* Determinism metadata (auditable) */}
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Deterministic selection: seed = attemptId, pick = {QUESTION_COUNT} (or
-          fewer if pool smaller)
-        </div>
+      {/* Determinism metadata (auditable) */}
+      <div className="mt-3 text-xs text-[var(--text-muted)]">
+        Deterministic selection: seed = attemptId, pick = {QUESTION_COUNT} (or
+        fewer if pool smaller)
+      </div>
 
-        {/* Question */}
-        <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>{currentText}</div>
+      {/* Question Card */}
+      <div className="mt-6 rounded-2xl border border-[var(--border)] bg-white p-6">
+        <div className="text-lg font-semibold leading-snug">{currentText}</div>
 
-          <div style={{ display: "grid", gap: 8 }}>
-            {currentOptions.map((opt) => {
-              const optText = String(opt);
-              const active = selected === optText;
+        <div className="mt-4 grid gap-3">
+          {currentOptions.map((opt) => {
+            const optText = String(opt);
+            const active = selected === optText;
 
-              return (
-                <button
-                  key={optText}
-                  type="button"
-                  onClick={() => choose(optText)}
-                  style={{
-                    textAlign: "left",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: active ? "2px solid #111" : "1px solid #ddd",
-                    background: active ? "#f6f6f6" : "#fff",
-                    cursor: "pointer",
-                  }}
-                  aria-pressed={active}
-                >
+            return (
+              <button
+                key={optText}
+                type="button"
+                onClick={() => choose(optText)}
+                className={[
+                  "w-full rounded-xl border px-4 py-3 text-left text-sm transition",
+                  "hover:shadow-sm",
+                  active
+                    ? "border-[var(--brand-primary)] bg-[var(--bg-app)]"
+                    : "border-[var(--border)] bg-white",
+                ].join(" ")}
+                aria-pressed={active}
+              >
+                <div className="font-medium text-[var(--text-primary)]">
                   {optText}
-                </button>
-              );
-            })}
-          </div>
-
-          {!selected ? (
-            <div
-              role="alert"
-              style={{
-                marginTop: 12,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #f0c36d",
-                background: "#fff9ef",
-                fontSize: 13,
-              }}
-            >
-              Select an option to continue.
-            </div>
-          ) : null}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Note: Scoring remains backend-owned. This runner only loads questions,
-          selects deterministically, and stores a local draft.
+        {!selected ? (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-[#f0c36d] bg-[#fff9ef] p-3 text-sm"
+          >
+             <div className="font-semibold">
+               {t("helper.select_title", "Select an option to continue")}
+             </div>
+            <div className="mt-1 text-[var(--text-muted)]">
+              {t(
+                "helper.select_body",
+                "You can change your answer anytime before submitting."
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-5 text-xs text-[var(--text-muted)]">
+          {t(
+            "note.scoring",
+            "Note: Scoring remains backend-owned. This runner only loads questions, selects deterministically, and stores a local draft."
+          )}
         </div>
       </div>
-    </SkeletonPage>
+    </div>
   );
 }

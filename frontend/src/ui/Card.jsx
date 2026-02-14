@@ -1,13 +1,11 @@
 // src/ui/Card.jsx
-export default function Card({ children }) {
+export default function Card({ children, className = "" }) {
   return (
     <div
-      style={{
-        background: "#fff",
-        borderRadius: 8,
-        padding: 24,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-      }}
+      className={[
+        "rounded-xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm",
+        className,
+      ].join(" ")}
     >
       {children}
     </div>

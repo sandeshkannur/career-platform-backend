@@ -21,7 +21,25 @@ function NavLink({ to, children }) {
   );
 }
 
-export default function AuthHeader() {
+export default function AuthHeader({ variant = "full" }) {
+  
+    if (variant === "minimal") {
+    return (
+      <div className="flex items-center justify-between py-3">
+        <Link to="/" className="text-[var(--text)] no-underline">
+          <span className="text-sm font-semibold">CareerPlatform</span>
+        </Link>
+
+        <Link
+          to="/pricing"
+          className="rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium text-[var(--text)] no-underline hover:opacity-90"
+        >
+          Pricing
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ borderBottom: "1px solid #eee", background: "#fff" }}>
       <div

@@ -2,7 +2,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 
-import SkeletonPage from "../ui/SkeletonPage";
 import Button from "../ui/Button";
 import { useSession } from "../hooks/useSession";
 
@@ -85,87 +84,75 @@ export default function StudentDashboardPage() {
   }, [studentId]);
 
   return (
-    <SkeletonPage
-      title="Student Dashboard"
-      subtitle={
-        sessionUser?.full_name
-          ? `Welcome, ${sessionUser.full_name}. Choose what you want to do next.`
-          : "Choose what you want to do next."
-      }
-      actions={<Button onClick={logout}>Logout</Button>}
-    >
+    <div className="mx-auto w-full max-w-5xl px-4 py-6">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold">Student Dashboard</h1>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            {sessionUser?.full_name
+              ? `Welcome, ${sessionUser.full_name}. Choose what you want to do next.`
+              : "Choose what you want to do next."}
+          </p>
+        </div>
+
+        <div className="shrink-0">
+          <Button onClick={logout}>Logout</Button>
+        </div>
+      </div>
+
       {/* Step 1: Consent Required Indicator (READ-ONLY) */}
       {showConsentRequired && (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              padding: 12,
-              border: "1px solid #f0c36d",
-              background: "#fff9ef",
-              borderRadius: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>Guardian consent required ⚠️</div>
-            <div style={{ fontSize: 13, marginTop: 4, opacity: 0.9 }}>
-              Your account is marked as a minor. Please complete guardian consent
-              verification to unlock reports and continue.
-            </div>
+        <div className="mt-5 rounded-xl border border-[#f0c36d] bg-[#fff9ef] p-4">
+          <div className="text-sm font-semibold">Guardian consent required ⚠️</div>
+          <div className="mt-1 text-sm text-[var(--text-muted)]">
+            Your account is marked as a minor. Please complete guardian consent
+            verification to unlock reports and continue.
           </div>
         </div>
       )}
 
       {/* Step 1: Consent Verified Indicator (READ-ONLY) */}
       {showConsentVerified && (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              padding: 12,
-              border: "1px solid #cfe9d6",
-              background: "#f3fff6",
-              borderRadius: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>Parental consent verified ✅</div>
-            <div style={{ fontSize: 13, marginTop: 4, opacity: 0.9 }}>
-              Your guardian consent is verified. You can continue using the platform.
-            </div>
+        <div className="mt-5 rounded-xl border border-[#cfe9d6] bg-[#f3fff6] p-4">
+          <div className="text-sm font-semibold">Parental consent verified ✅</div>
+          <div className="mt-1 text-sm text-[var(--text-muted)]">
+            Your guardian consent is verified. You can continue using the platform.
           </div>
         </div>
       )}
 
       {/* Read-only data section (temporary but extremely useful for schema validation) */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="mt-6">
         {!studentId && (
-          <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>Session</div>
-            <div style={{ fontSize: 14 }}>
-              Could not determine <code>studentId</code> from <code>sessionUser</code>.
+          <div className="rounded-xl border border-[var(--border)] bg-white p-4">
+            <div className="text-sm font-semibold">Session</div>
+            <div className="mt-2 text-sm text-[var(--text-muted)]">
+              Could not determine <code>studentId</code> from{" "}
+              <code>sessionUser</code>.
               <br />
-              Please share your <code>/v1/auth/me</code> payload field name for the student id.
+              Please share your <code>/v1/auth/me</code> payload field name for the
+              student id.
             </div>
           </div>
         )}
 
         {studentId && loading && (
-          <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+          <div className="rounded-xl border border-[var(--border)] bg-white p-4 text-sm">
             Loading dashboard data…
           </div>
         )}
 
         {studentId && error && (
-          <div
-            style={{
-              padding: 12,
-              border: "1px solid #f3b4b4",
-              background: "#fff6f6",
-              borderRadius: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              Failed to load dashboard data{error.status ? ` (HTTP ${error.status})` : ""}
+          <div className="rounded-xl border border-[#f3b4b4] bg-[#fff6f6] p-4">
+            <div className="text-sm font-semibold">
+              Failed to load dashboard data
+              {error.status ? ` (HTTP ${error.status})` : ""}
             </div>
-            <div style={{ fontSize: 14 }}>{error.message}</div>
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              {error.message}
+            </div>
+            <div className="mt-3">
               <Button variant="secondary" onClick={() => window.location.reload()}>
                 Retry
               </Button>
@@ -174,85 +161,122 @@ export default function StudentDashboardPage() {
         )}
 
         {studentId && !loading && !error && (dashboard || assessments || results) && (
-          <div style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+          <details className="rounded-xl border border-[var(--border)] bg-white">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold">
               Backend Data (temporary debug view)
-            </div>
+              <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
+                (click to expand)
+              </span>
+            </summary>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <pre style={{ margin: 0, padding: 10, overflowX: "auto" }}>
+            <div className="grid gap-3 px-4 pb-4">
+              <pre className="m-0 overflow-x-auto rounded-lg bg-[var(--bg-app)] p-3 text-xs">
                 {JSON.stringify({ studentId, dashboard }, null, 2)}
               </pre>
-              <pre style={{ margin: 0, padding: 10, overflowX: "auto" }}>
+              <pre className="m-0 overflow-x-auto rounded-lg bg-[var(--bg-app)] p-3 text-xs">
                 {JSON.stringify({ assessments }, null, 2)}
               </pre>
-              <pre style={{ margin: 0, padding: 10, overflowX: "auto" }}>
+              <pre className="m-0 overflow-x-auto rounded-lg bg-[var(--bg-app)] p-3 text-xs">
                 {JSON.stringify({ results }, null, 2)}
               </pre>
             </div>
-          </div>
+          </details>
         )}
       </div>
 
-      {/* Existing navigation buttons (unchanged) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/onboarding")}
-        >
-          Onboarding / Context
-        </Button>
+      {/* Action cards */}
+      <div className="mt-6">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => navigate("/student/onboarding")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Onboarding / Context</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              Add optional context to improve recommendations.
+            </div>
+          </button>
 
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/assessment")}
-        >
-          Start / Resume Assessment
-        </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/student/assessment")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Start / Resume Assessment</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              Continue your assessment journey.
+            </div>
+          </button>
 
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/results/latest")}
-        >
-          View Latest Results
-        </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/student/results/latest")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">View Latest Results</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              See your latest career recommendations.
+            </div>
+          </button>
 
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/results/history")}
-        >
-          Results History
-        </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/student/results/history")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Results History</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              View all your previous submissions.
+            </div>
+          </button>
 
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => {
-            if (!studentId) return navigate("/student/consent");
-            navigate(`/student/reports/${studentId}`);
-          }}
-        >
-          Report (placeholder)
-        </Button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!studentId) return navigate("/student/consent");
+              navigate(`/student/reports/${studentId}`);
+            }}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Report (placeholder)</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              Downloadable report experience (coming soon).
+            </div>
+          </button>
 
-        <Button
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/careers/1")}
-        >
-          Career Detail (placeholder)
-        </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/student/careers/1")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Career Detail (placeholder)</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              Deep dive into a career explanation (coming soon).
+            </div>
+          </button>
 
-        <Button
-          variant="secondary"
-          style={{ width: "100%" }}
-          onClick={() => navigate("/student/consent")}
-        >
-          Consent (if minor)
-        </Button>
+          <button
+            type="button"
+            onClick={() => navigate("/student/consent")}
+            className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:shadow-sm"
+          >
+            <div className="text-sm font-semibold">Consent (if minor)</div>
+            <div className="mt-1 text-sm text-[var(--text-muted)]">
+              Verify guardian consent if required.
+            </div>
+          </button>
+        </div>
 
-        <div style={{ marginTop: 10 }}>
-          <Link to="/">← Home</Link>
+        <div className="mt-4">
+          <Link
+            to="/"
+            className="text-sm text-[var(--brand-primary)] hover:underline"
+          >
+            ← Home
+          </Link>
         </div>
       </div>
-    </SkeletonPage>
+    </div>
   );
 }
