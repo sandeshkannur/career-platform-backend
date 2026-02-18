@@ -7,7 +7,8 @@ import Button from "../../ui/Button";
 import useContent from "../../hooks/useContent";
 
 import { getQuestionPool } from "../../api/questions";
-import { deterministicPick } from "../../lib/deterministicPick";
+import { getAssessmentQuestions, postAssessmentResponses } from "../../api/assessments";
+import { getPreferredLang, setPreferredLang } from "../../apiClient";
 import { loadAnswerQueue, replayAnswerQueueOnce } from "../../lib/replayQueue";
 
 const DRAFT_PREFIX_V2 = "__ASSESSMENT_RUN_DRAFT_V2__";
@@ -42,6 +43,16 @@ export default function StudentAssessmentRunPage() {
   }, [attemptId]);
 
   const [index, setIndex] = useState(0);
+  const [lang, setLang] = useState(getPreferredLang());
+
+  const handleLangChange = (e) => {
+    const next = (e?.target?.value || "en").trim().toLowerCase();
+    setPreferredLang(next);
+    setLang(next);
+
+    // Reset to first question for a predictable experience
+    setIndex(0);
+  };
 
   // answers: { [questionId]: { answer: string, answered_at: ISOString } }
   const [answers, setAnswers] = useState({});
@@ -54,6 +65,7 @@ export default function StudentAssessmentRunPage() {
 
   const [pool, setPool] = useState(null);
   const [poolError, setPoolError] = useState(null);
+  const [serverQuestionIds, setServerQuestionIds] = useState([]);
 
   // A+ (auto-replay on open) — small, neutral UX signal
   const [syncState, setSyncState] = useState({ status: "idle", message: "" });
@@ -68,7 +80,7 @@ export default function StudentAssessmentRunPage() {
       setPoolError(null);
 
       try {
-        const data = await getQuestionPool();
+        const data = await getQuestionPool({ lang });
 
         // Backend contract can be either:
         // - { questions: [...] }
@@ -89,28 +101,58 @@ export default function StudentAssessmentRunPage() {
     return () => {
       cancelled = true;
     };
-  }, [attemptId]);
+  }, [attemptId, lang]);
 
-  /* ---------------- Deterministically select questions ---------------- */
+  /* ---------------- Load assessment questions (server canonical) ---------------- */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAssessmentQuestions() {
+      if (!attemptId || attemptId === "unknown") return;
+
+      try {
+        const data = await getAssessmentQuestions(attemptId, lang);
+
+        // Backend returns: { questions: [ { question_id: "3", ... }, ... ] }
+        const ids = Array.isArray(data?.questions)
+          ? data.questions.map((q) => String(q.question_id))
+          : [];
+
+        if (!cancelled) setServerQuestionIds(ids);
+      } catch (e) {
+        if (!cancelled) setServerQuestionIds([]);
+      }
+    }
+
+    loadAssessmentQuestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId, lang]);
+
+  /* ---------------- Select questions (server canonical) ---------------- */
   const QUESTIONS = useMemo(() => {
     if (!Array.isArray(pool)) return [];
+    if (!Array.isArray(serverQuestionIds) || serverQuestionIds.length === 0)
+      return [];
 
-    const getKey = (q) => q?.question_id ?? q?.id ?? q?.questionId ?? "";
+    const byId = new Map(
+      pool.map((q) => [
+        String(q?.question_id ?? q?.id ?? q?.questionId ?? ""),
+        q,
+      ])
+    );
 
-    return deterministicPick({
-      seed: attemptId || "unknown",
-      items: pool,
-      count: QUESTION_COUNT,
-      getKey,
-    });
-  }, [pool, attemptId]);
+    // Preserve server order
+    return serverQuestionIds
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean);
+  }, [pool, serverQuestionIds]);
 
-  // Stable list of selected question ids (stored in draft for audit + safety)
+  // Stable list of selected question ids (server canonical)
   const selectedQuestionIds = useMemo(() => {
-    return QUESTIONS.map(
-      (q) => q?.question_id ?? q?.id ?? q?.questionId ?? ""
-    ).filter(Boolean);
-  }, [QUESTIONS]);
+    return Array.isArray(serverQuestionIds) ? serverQuestionIds.filter(Boolean) : [];
+  }, [serverQuestionIds]);
 
   const current = QUESTIONS[index];
 
@@ -420,7 +462,10 @@ export default function StudentAssessmentRunPage() {
   }
 
   // Wait for both: local draft load attempt + backend pool load attempt
-  const stillLoading = !loaded || (!pool && !poolError);
+  const stillLoading =
+    !loaded ||
+    (!pool && !poolError) ||
+    (attemptId && attemptId !== "unknown" && serverQuestionIds.length === 0);
 
   if (stillLoading) {
     return (
@@ -511,7 +556,7 @@ export default function StudentAssessmentRunPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-[var(--border)] bg-white p-4 text-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           {t("empty.body", "Unable to load questions.")}
         </div>
       </div>
@@ -534,7 +579,16 @@ export default function StudentAssessmentRunPage() {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+          <select
+            value={lang}
+            onChange={handleLangChange}
+            className="h-9 rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+            aria-label="Language"
+          >
+            <option value="en">EN</option>
+            <option value="kn">KN</option>
+          </select>
           <Button variant="secondary" onClick={handleBack}>
             {t("actions.back", "Back")}
           </Button>

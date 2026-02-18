@@ -5,11 +5,54 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
 // ✅ one-time redirect guard (prevents repeated redirects / race conditions)
 const AUTH_REDIRECT_FLAG = "__AUTH_REDIRECTING__";
+const LANG_STORAGE_KEY = "CP_LANG";
+const DEFAULT_LANG = "en";
 
+// Exported so UI can call it later (language dropdown/toggle)
+export function getPreferredLang() {
+  const raw = (localStorage.getItem(LANG_STORAGE_KEY) || "").trim().toLowerCase();
+  return raw || DEFAULT_LANG;
+}
+
+export function setPreferredLang(lang) {
+  const value = (lang || "").trim().toLowerCase();
+  if (!value) return;
+  localStorage.setItem(LANG_STORAGE_KEY, value);
+}
 function buildUrl(url) {
   if (/^https?:\/\//i.test(url)) return url;
   if (!API_BASE) return url; // proxy mode
   return `${API_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+function applyLangParamIfNeeded(finalUrl, method = "GET") {
+  const m = (method || "GET").toUpperCase();
+  if (m !== "GET") return finalUrl;
+
+  const lang = getPreferredLang();
+  if (!lang) return finalUrl;
+
+  const isAbsolute = /^https?:\/\//i.test(finalUrl);
+
+  try {
+    const u = new URL(finalUrl, window.location.origin);
+
+    const p = u.pathname;
+    const isQuestionEndpoint =
+      p === "/v1/questions" || p === "/v1/questions/pool" || p === "/v1/questions/random";
+
+    if (isQuestionEndpoint && !u.searchParams.has("lang")) {
+      u.searchParams.set("lang", lang);
+    }
+
+    // Preserve relative URLs in proxy mode
+    if (!isAbsolute && !API_BASE) {
+      return `${u.pathname}${u.search}${u.hash}`;
+    }
+
+    return u.toString();
+  } catch {
+    return finalUrl;
+  }
 }
 
 async function safeParseBody(res) {
@@ -74,7 +117,8 @@ function hardLogoutToLogin() {
 }
 
 export async function apiRequest(url, options = {}) {
-  const finalUrl = buildUrl(url);
+  const builtUrl = buildUrl(url);
+  const finalUrl = applyLangParamIfNeeded(builtUrl, options.method);
   const token = getToken();
 
   const headers = new Headers(options.headers || {});

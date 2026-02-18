@@ -954,8 +954,31 @@ def submit_assessment(
     )
 
     if existing:
-        existing.recommended_stream = "Auto"     # TODO: smarter logic later
-        existing.recommended_careers = []        # store as JSON list
+        # PR21: deterministic fallback — "Auto" currently does not generate careers.
+        # Reuse seeded recommender logic to ensure beta-safe non-empty results.
+        seeded_careers: list = []
+        try:
+            # Use the same compute pipeline as /v1/recommendations/{student_id}
+            from app.routers.recommendations import (
+                _compute_recommendations_payload,
+                _sanitize_recommendations_payload,
+            )
+            from app.projections.student_safe import project_student_safe
+
+            # IMPORTANT: recommender expects students.id (student_profile.id), NOT users.id
+            seeded_payload = _compute_recommendations_payload(student_id=student_profile.id, db=db)
+            seeded_payload_safe = project_student_safe(_sanitize_recommendations_payload(seeded_payload))
+            seeded_careers = seeded_payload_safe.get("recommended_careers") or []
+        except Exception as e:
+            print(f"[PR21] Seeded fallback failed in submit_assessment for student_profile.id={getattr(student_profile,'id',None)}: {e}")
+            seeded_careers = []
+
+        if seeded_careers:
+            existing.recommended_stream = "Seeded (PR-B)"
+            existing.recommended_careers = seeded_careers
+        else:
+            existing.recommended_stream = "Auto"
+            existing.recommended_careers = []
         existing.skill_tiers = tiers
         existing.generated_at = datetime.utcnow()
         # PR40: refresh bundle pins on regenerate/upsert
@@ -1464,12 +1487,31 @@ def generate_result(assessment_id: int, student_id: int) -> None:
 
         # Beta policy: tiers come from SCALED (0..100), not HSI
         tiers = assign_tiers_scaled_0_100(scores_for_tiers)
+        # PR21: deterministic fallback for background generation as well
+        seeded_careers: list = []
+        try:
+            from app.routers.recommendations import (
+                _compute_recommendations_payload,
+                _sanitize_recommendations_payload,
+            )
+            from app.projections.student_safe import project_student_safe
+
+            # Background arg "student_id" is users.id; recommender needs students.id
+            if student_profile:
+                seeded_payload = _compute_recommendations_payload(student_id=student_profile.id, db=db)
+                seeded_payload_safe = project_student_safe(_sanitize_recommendations_payload(seeded_payload))
+                seeded_careers = seeded_payload_safe.get("recommended_careers") or []
+        except Exception as e:
+            print(f"[PR21] Seeded fallback failed in generate_result for users.id={student_id}: {e}")
+            seeded_careers = []
+
+        stream_used = "Seeded (PR-B)" if seeded_careers else "Auto"
 
         # Save assessment result
         result = models.AssessmentResult(
             assessment_id=assessment_id,
-            recommended_stream="Auto",
-            recommended_careers=[],
+            recommended_stream=stream_used,
+            recommended_careers=seeded_careers,
             skill_tiers=tiers,
             # PR40: pin bundle versions at generation time (auditability)
             assessment_version=assessment.assessment_version,

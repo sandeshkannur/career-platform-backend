@@ -12,7 +12,25 @@ import { apiGet, apiPost } from "../apiClient";
 export async function getActiveAssessment() {
   return apiGet("/v1/assessments/active");
 }
+/**
+ * GET /v1/assessments/{assessment_id}/questions
+ * Returns canonical question set for the attempt (backend authoritative).
+ *
+ * Response shape:
+ * {
+ *   assessment_version,
+ *   lang,
+ *   lang_used,
+ *   count_returned,
+ *   questions: [{ question_id, question_code, skill_id, question_text, facet_tags }]
+ * }
+ */
+export async function getAssessmentQuestions(assessmentId, lang) {
+  if (!assessmentId) throw new Error("assessmentId is required");
 
+  const qs = lang ? `?lang=${encodeURIComponent(lang)}` : "";
+  return apiGet(`/v1/assessments/${assessmentId}/questions${qs}`);
+}
 /**
  * POST /v1/assessments/
  * Creates a new assessment run for the current user.

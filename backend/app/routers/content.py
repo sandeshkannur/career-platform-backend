@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.deps import get_db
+from fastapi.responses import JSONResponse
 from app.models import ExplainabilityContent
 from app.schemas import ExplainabilityContentResponse, ExplainabilityContentItem
-
+from app.services.i18n_resolver import normalize_lang
 router = APIRouter(tags=["Content"])
 
 
@@ -15,6 +16,7 @@ router = APIRouter(tags=["Content"])
 def get_explainability_content(
     version: str = Query("v1", description="Content version (e.g., v1)"),
     locale: str = Query("en", description="Locale (e.g., en, kn-IN)"),
+    lang: Optional[str] = Query(None, description="Alias for locale (e.g., kn, hi)"),
     keys: Optional[str] = Query(None, description="Optional comma-separated explanation_key filter"),
     facet_keys: Optional[List[str]] = Query(None, description="Facet keys (repeatable and/or comma-separated)"),
     aq_keys: Optional[List[str]] = Query(None, description="Associated quality keys (repeatable and/or comma-separated)"),
@@ -28,11 +30,7 @@ def get_explainability_content(
     - Optional 'keys' filter enables fetching only a subset for lightweight FE calls.
     """
 
-    stmt = select(ExplainabilityContent).where(
-        ExplainabilityContent.version == version,
-        ExplainabilityContent.locale == locale,
-        ExplainabilityContent.is_active == True,  # noqa: E712
-    )
+    requested_locale = normalize_lang(lang or locale)
 
     def _split_mixed(values: Optional[List[str]]) -> List[str]:
         """
@@ -100,20 +98,48 @@ def get_explainability_content(
     if key_list:
         seen = set()
         key_list = [k for k in key_list if not (k in seen or seen.add(k))]
-        stmt = stmt.where(ExplainabilityContent.explanation_key.in_(key_list))
 
-    rows: List[ExplainabilityContent] = db.execute(stmt).scalars().all()
+    def _fetch(locale_code: str) -> List[ExplainabilityContent]:
+        stmt = select(ExplainabilityContent).where(
+            ExplainabilityContent.version == version,
+            ExplainabilityContent.locale == locale_code,
+            ExplainabilityContent.is_active == True,  # noqa: E712
+        )
+        if key_list:
+            stmt = stmt.where(ExplainabilityContent.explanation_key.in_(key_list))
+        return db.execute(stmt).scalars().all()
+
+    # 1) Try requested locale
+    rows_local = _fetch(requested_locale)
+
+    # 2) If not English, also fetch English fallback
+    rows_en: List[ExplainabilityContent] = []
+    if requested_locale != "en":
+        rows_en = _fetch("en")
+
+    # Merge: requested locale wins; English fills gaps
+    merged: dict[str, str] = {}
+
+    for r in rows_en:
+        merged[r.explanation_key] = r.text
+
+    for r in rows_local:
+        merged[r.explanation_key] = r.text
 
     items = [
-        ExplainabilityContentItem(
-            explanation_key=r.explanation_key,
-            text=r.text,
-        )
-        for r in rows
+        ExplainabilityContentItem(explanation_key=k, text=v)
+        for k, v in merged.items()
     ]
 
-    return ExplainabilityContentResponse(
+    resp = ExplainabilityContentResponse(
         version=version,
-        locale=locale,
+        locale=requested_locale,
         items=items,
     )
+
+    return JSONResponse(
+        content=resp.model_dump(),
+        media_type="application/json; charset=utf-8",
+    )
+
+

@@ -294,6 +294,58 @@ class SkillKeySkillMap(Base):
     skill = relationship("Skill", backref="keyskill_maps")
     keyskill = relationship("KeySkill", backref="skill_maps")
 
+# ---------------------------
+# PR21: i18n foundation models
+# ---------------------------
+
+class Language(Base):
+    __tablename__ = "languages"
+
+    code = Column(String(20), primary_key=True, index=True)
+    name = Column(String(80), nullable=False)
+    native_name = Column(String(80), nullable=True)
+    direction = Column(String(3), nullable=False, default="ltr")
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class QuestionTranslation(Base):
+    __tablename__ = "question_translations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    assessment_version = Column(String(50), nullable=False, index=True)
+
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    locale = Column(String(20), ForeignKey("languages.code", ondelete="RESTRICT"), nullable=False, index=True)
+
+    question_text = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class FacetTranslation(Base):
+    __tablename__ = "facet_translations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    facet_id = Column(String(120), ForeignKey("aq_facets.facet_id", ondelete="RESTRICT"), nullable=False, index=True)
+    locale = Column(String(20), ForeignKey("languages.code", ondelete="RESTRICT"), nullable=False, index=True)
+
+    facet_name = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ExplanationTranslation(Base):
+    __tablename__ = "explanation_translations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_version = Column(String(32), nullable=False, index=True)
+    locale = Column(String(20), ForeignKey("languages.code", ondelete="RESTRICT"), nullable=False, index=True)
+
+    explanation_key = Column(String(120), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+
+    is_active = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 
 # =========================================================
 # Questions (assessment item bank)

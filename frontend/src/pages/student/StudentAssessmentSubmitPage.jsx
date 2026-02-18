@@ -1,15 +1,30 @@
 // src/pages/student/StudentAssessmentSubmitPage.jsx
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 
-import { submitAssessment } from "../../api/assessments";
+import { getAssessment, postAssessmentResponses, submitAssessment } from "../../api/assessments";
 
 const DRAFT_PREFIX_V2 = "__ASSESSMENT_RUN_DRAFT_V2__";
 const QUESTION_COUNT = 75;
+function toLikertCode(value) {
+  // Backend expects "1".."5"
+  // UI draft currently stores labels like "Agree"
+  const v = String(value || "").trim().toLowerCase();
 
+  if (v === "strongly disagree") return "1";
+  if (v === "disagree") return "2";
+  if (v === "neutral") return "3";
+  if (v === "agree") return "4";
+  if (v === "strongly agree") return "5";
+
+  // If already numeric "1".."5", pass through
+  if (/^[1-5]$/.test(v)) return v;
+
+  return null;
+}
 function readDraft(storageKey) {
   try {
     const raw = sessionStorage.getItem(storageKey);
@@ -30,11 +45,42 @@ export default function StudentAssessmentSubmitPage() {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [serverQuestionIds, setServerQuestionIds] = useState([]);
 
   // Read once per render (draft is autosaved on run page)
   const draft = useMemo(() => readDraft(storageKey), [storageKey]);
+    useEffect(() => {
+    let cancelled = false;
 
-  const questionIds = Array.isArray(draft?.question_ids) ? draft.question_ids : [];
+    async function load() {
+      if (!attemptId) return;
+
+      try {
+        const a = await getAssessment(attemptId);
+
+        // Expecting { question_ids: [...] } from backend
+        const ids = Array.isArray(a?.question_ids) ? a.question_ids : [];
+
+        if (!cancelled) setServerQuestionIds(ids);
+      } catch (e) {
+        // Don't hard fail here; draft may still exist
+        if (!cancelled) {
+          setError(e?.detail || e?.message || "Failed to load assessment from server.");
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptId]);
+
+  const questionIds = serverQuestionIds.length
+    ? serverQuestionIds
+    : Array.isArray(draft?.question_ids)
+      ? draft.question_ids
+      : [];
   const answersObj = draft?.answers && typeof draft.answers === "object" ? draft.answers : {};
 
   const answeredCount = useMemo(() => {
@@ -83,16 +129,31 @@ export default function StudentAssessmentSubmitPage() {
       return;
     }
 
-    // Build payload aligned with backend contract:
-    // [{ question_id, answer }]
-    const payload = questionIds.map((qid) => ({
-      question_id: qid,
-      answer: answersObj[qid].answer,
-    }));
+    const responses = questionIds.map((qid) => {
+      const code = toLikertCode(answersObj?.[qid]?.answer);
+
+      return {
+        question_id: qid,
+        answer: code,
+        idempotency_key: `attempt:${attemptId}:q:${qid}`,
+      };
+    });
+
+    const invalid = responses.find((r) => !r.answer);
+    if (invalid) {
+      setError(
+        `Invalid answer value for question_id=${invalid.question_id}. Please go back and reselect the option.`
+      );
+      return;
+    }
 
     setBusy(true);
     try {
-      await submitAssessment(attemptId, payload);
+      // 2) Persist responses first (backend authoritative)
+      await postAssessmentResponses(attemptId, responses);
+
+      // 3) Then trigger scoring / finalization
+      await submitAssessment(attemptId, {});
 
       // Clear local draft on success
       try {
@@ -104,7 +165,7 @@ export default function StudentAssessmentSubmitPage() {
       // Navigate to latest results page (PR6 will render backend results)
       navigate("/student/results/latest", { replace: true });
     } catch (e) {
-      setError(e?.message || "Submit failed. Please try again.");
+      setError(e?.detail || e?.message || "Submit failed. Please try again.");
     } finally {
       setBusy(false);
     }

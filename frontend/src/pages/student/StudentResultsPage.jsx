@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { apiGet } from "../../apiClient";
+import { apiGet, getPreferredLang, setPreferredLang } from "../../apiClient";
 import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 import { useSession } from "../../hooks/useSession";
@@ -173,6 +173,18 @@ export default function StudentResultsPage() {
       (typeof navigator !== "undefined" ? navigator.language : "en");
     return (raw || "en").toString().split(/[-_]/)[0].toLowerCase();
   }, [sessionUser]);
+  const [lang, setLang] = useState("en");
+
+  useEffect(() => {
+    // Student language = localStorage preference (can differ from browser/session user)
+    if (sessionUser?.role === "student") {
+      setLang(getPreferredLang() || "en");
+      return;
+    }
+
+    // Admin/counsellor can remain English for now (or browser/session locale)
+    setLang(contentLocale || "en");
+  }, [sessionUser?.role, contentLocale]);
 
   const [explainRes, setExplainRes] = useState({ facets: [], aqs: [] });
   const [explainLoading, setExplainLoading] = useState(false);
@@ -184,6 +196,15 @@ export default function StudentResultsPage() {
 
   const lastExplainSigRef = useRef("");
   const lastDeepSigRef = useRef("");
+  const handleLangChange = (e) => {
+    const next = (e?.target?.value || "en").trim().toLowerCase();
+    setPreferredLang(next);
+    setLang(next);
+
+    // Force refetch of localized content (avoids signature cache blocking)
+    lastExplainSigRef.current = "";
+    lastDeepSigRef.current = "";
+  };
   const selectedAssessmentId = useMemo(() => {
     const fromState =
       location?.state?.assessment_id ??
@@ -284,7 +305,7 @@ export default function StudentResultsPage() {
           return;
         }
         const version = selectedResult?.results_payload_version || "v1";
-        const locale = contentLocale || "en";
+        const locale = lang || "en";
         const sig = `${version}|${locale}|${combinedKeys.join(",")}`;
 
         // Guard against duplicate calls (dev strict mode / dependency churn)
@@ -321,7 +342,7 @@ export default function StudentResultsPage() {
     }
 
     loadExplainability();
-  }, [isPaidOrPremium, hasPremiumSignals, contentLocale, facetKeys, aqKeys, selectedResult?.results_payload_version]);
+  }, [isPaidOrPremium, hasPremiumSignals, lang, facetKeys, aqKeys, selectedResult?.results_payload_version]);
 
   useEffect(() => {
     async function loadDeepInsights() {
@@ -335,7 +356,7 @@ export default function StudentResultsPage() {
       }
 
       const version = selectedResult?.results_payload_version || "v1";
-      const locale = contentLocale || "en";
+      const locale = lang || "en";
       const sig = `${studentId}|${version}|${locale}`;
 
       if (lastDeepSigRef.current === sig) return;
@@ -404,7 +425,7 @@ export default function StudentResultsPage() {
     }
 
     loadDeepInsights();
-  }, [isPaidOrPremium, hasPremiumSignals, studentId, contentLocale, selectedResult?.results_payload_version]);
+  }, [isPaidOrPremium, hasPremiumSignals, studentId, lang, selectedResult?.results_payload_version]);
   const ComingSoon = ({ text = "Insights coming soon." }) => (
     <div className="text-muted" style={{ fontSize: 13 }}>
       {text}
@@ -435,6 +456,22 @@ export default function StudentResultsPage() {
     >
       <div className="cp-results">
         <div className="cp-resultsActions">
+          <select
+            value={lang}
+            onChange={handleLangChange}
+            style={{
+              height: 40,
+              border: "1px solid #ddd",
+              borderRadius: 8,
+              padding: "0 10px",
+              fontSize: 13,
+              background: "white",
+            }}
+            aria-label="Language"
+          >
+            <option value="en">EN</option>
+            <option value="kn">KN</option>
+          </select>
           <Button variant="secondary" onClick={() => navigate("/student/dashboard")}>
             Back to Dashboard
           </Button>
@@ -796,6 +833,13 @@ export default function StudentResultsPage() {
                                         >
                                           <div style={{ fontWeight: 700 }}>
                                             {ci?.career_title || "Career"}
+                                          </div>
+                                          <div style={{ marginTop: 6 }}>
+                                            {whyText && whyText.trim().length > 0 ? (
+                                              <span>{whyText}</span>
+                                            ) : (
+                                              <ComingSoon />
+                                            )}
                                           </div>
 
                                           <div

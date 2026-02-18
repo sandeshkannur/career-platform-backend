@@ -16,6 +16,14 @@ router = APIRouter(
     # NOTE: no auth dependency here to avoid 401 issues in Swagger for now
 )
 
+def compute_recommendations_payload(student_id: int, db: Session) -> dict:
+    """
+    Public wrapper for reuse outside this router (e.g., assessments fallback).
+    Keeps existing behavior unchanged.
+    """
+    return _compute_recommendations_payload(student_id=student_id, db=db)
+
+
 def _compute_recommendations_payload(student_id: int, db: Session) -> dict:
     """
     Computes RAW recommendations payload (includes numeric fields).

@@ -6,7 +6,7 @@ import SkeletonPage from "../../ui/SkeletonPage";
 import Button from "../../ui/Button";
 
 import { getActiveAssessment, startAssessment } from "../../api/assessments";
-
+import { getPreferredLang, setPreferredLang } from "../../apiClient";
 /**
  * Assessment UX — Step 2 (wired)
  * - Start calls backend to create an assessment run
@@ -51,7 +51,13 @@ function writeLastRunSnapshot(snapshot) {
 export default function StudentAssessmentIntroPage() {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [lang, setLang] = useState(getPreferredLang());
 
+  const handleLangChange = useCallback((e) => {
+    const next = (e?.target?.value || "en").trim().toLowerCase();
+    setPreferredLang(next);
+    setLang(next);
+  }, []);
   const lastRun = useMemo(() => readLastRunSnapshot(), []);
 
   // Step 1: backend-authoritative state sync (no scoring/order logic on client)
@@ -136,6 +142,28 @@ export default function StudentAssessmentIntroPage() {
       subtitle="Understand your strengths, preferences, and aptitude."
       actions={
         <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <label style={{ fontSize: 12, opacity: 0.8 }} htmlFor="cp-lang">
+              Language
+            </label>
+            <select
+              id="cp-lang"
+              value={lang}
+              onChange={handleLangChange}
+              style={{
+                height: 40,
+                border: "1px solid #ddd",
+                borderRadius: 8,
+                padding: "0 10px",
+                fontSize: 13,
+                background: "white",
+              }}
+            >
+              <option value="en">English</option>
+              <option value="kn">Kannada</option>
+            </select>
+          </div>
+
           <Button variant="secondary" disabled={busy || activeLoading} onClick={handleResume}>
             Resume
           </Button>
