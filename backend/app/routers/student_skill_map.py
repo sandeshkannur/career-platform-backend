@@ -13,7 +13,7 @@ router = APIRouter(
 
 
 # ➕ Assign a skill to a student
-@router.post("/student-skill-map", response_model=schemas.StudentSkillMap)
+@router.post("", response_model=schemas.StudentSkillMap)
 def assign_skill_to_student(mapping: schemas.StudentSkillMapCreate, db: Session = Depends(deps.get_db)):
     existing = db.query(models.StudentSkillMap).filter(
         models.StudentSkillMap.student_id == mapping.student_id,
@@ -29,12 +29,12 @@ def assign_skill_to_student(mapping: schemas.StudentSkillMapCreate, db: Session 
     return db_mapping
 
 # 📋 Get all student-skill mappings
-@router.get("/student-skill-map", response_model=List[schemas.StudentSkillMap])
+@router.get("", response_model=List[schemas.StudentSkillMap])
 def get_all_mappings(db: Session = Depends(deps.get_db)):
     return db.query(models.StudentSkillMap).all()
 
 # 🗑️ Delete a mapping by ID
-@router.delete("/student-skill-map/{mapping_id}")
+@router.delete("/{mapping_id}")
 def delete_mapping(mapping_id: int, db: Session = Depends(deps.get_db)):
     mapping = db.query(models.StudentSkillMap).filter(models.StudentSkillMap.id == mapping_id).first()
     if not mapping:

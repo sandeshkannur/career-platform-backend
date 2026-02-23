@@ -4,13 +4,13 @@ from .. import models, deps
 from app.auth.auth import get_current_active_user
 
 router = APIRouter(
-    prefix="/career-keyskills",
+    prefix="",
     tags=["Career ↔ KeySkill"],
     dependencies=[Depends(get_current_active_user)],
 )
 
 # ✅ Link a Career to a KeySkill
-@router.post("/career-keyskills")
+@router.post("")
 def link_keyskill_to_career(career_id: int, keyskill_id: int, db: Session = Depends(deps.get_db)):
     career = db.query(models.Career).filter(models.Career.id == career_id).first()
     keyskill = db.query(models.KeySkill).filter(models.KeySkill.id == keyskill_id).first()
@@ -29,7 +29,7 @@ def link_keyskill_to_career(career_id: int, keyskill_id: int, db: Session = Depe
     return {"message": f"Linked KeySkill {keyskill_id} to Career {career_id}"}
 
 # 📋 List all Career ↔ KeySkill Mappings
-@router.get("/career-keyskills")
+@router.get("")
 def get_all_career_keyskill_mappings(db: Session = Depends(deps.get_db)):
     careers = db.query(models.Career).all()
     result = []
@@ -44,7 +44,7 @@ def get_all_career_keyskill_mappings(db: Session = Depends(deps.get_db)):
     return result
 
 # ❌ Unlink a Career from a KeySkill
-@router.delete("/career-keyskills")
+@router.delete("")
 def unlink_keyskill_from_career(career_id: int, keyskill_id: int, db: Session = Depends(deps.get_db)):
     career = db.query(models.Career).filter(models.Career.id == career_id).first()
     keyskill = db.query(models.KeySkill).filter(models.KeySkill.id == keyskill_id).first()

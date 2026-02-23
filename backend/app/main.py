@@ -203,14 +203,14 @@ api_v1.include_router(assessments.router, prefix="/assessments", tags=["Assessme
 
 # Core reference data
 api_v1.include_router(career_clusters.router, prefix="/career-clusters", tags=["Career Clusters"])
-api_v1.include_router(careers.router, prefix="/careers", tags=["Careers"])
-api_v1.include_router(skills.router, prefix="/skills", tags=["Skills"])
+api_v1.include_router(careers.router, prefix="", tags=["Careers"])
+api_v1.include_router(skills.router, prefix="", tags=["Skills"])
 api_v1.include_router(key_skills_router, prefix="/key-skills", tags=["Key Skills"])
 
 # Student-related
-api_v1.include_router(students.router, prefix="/students", tags=["Students"])
-api_v1.include_router(student_skill_map.router, prefix="/student-skill-map", tags=["Student ↔ Skill Map"])
-api_v1.include_router(student_keyskill_map.router, prefix="/student-keyskill-map", tags=["Student ↔ KeySkill Map"])
+api_v1.include_router(students.router, prefix="", tags=["Students"])
+api_v1.include_router(student_skill_map.router, prefix="", tags=["Student ↔ Skill Map"])
+api_v1.include_router(student_keyskill_map.router, prefix="", tags=["StudentKeySkillMap"])
 
 # Mappings + recommendations
 api_v1.include_router(career_keyskill_map.router, prefix="/career-keyskill-map", tags=["Career ↔ KeySkill Map"])
