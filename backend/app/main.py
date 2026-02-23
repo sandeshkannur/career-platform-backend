@@ -14,9 +14,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.openapi import apply_openapi_security
+from app.core.startup import run_startup_tasks
 
-from app.database import engine, Base
-from app.wait_for_db import wait_for_postgres
 import app.models  # noqa: F401  # ensures SQLAlchemy models are registered
 
 
@@ -50,24 +49,6 @@ print(f"DEBUG: DATABASE_URL from env: {DATABASE_URL}")
 print(f"DEBUG: SKIP_DB_WAIT from env: {SKIP_DB_WAIT}")
 
 
-# ============================================================
-# 2) WAIT FOR DATABASE (POSTGRES) IF REQUIRED
-# ============================================================
-
-# Wait only when:
-# - NOT using sqlite
-# - SKIP_DB_WAIT is not enabled
-if not DATABASE_URL.startswith("sqlite") and SKIP_DB_WAIT != "1":
-    wait_for_postgres(
-        host=os.getenv("POSTGRES_HOST", "db"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        user=os.getenv("POSTGRES_USER", "counseling"),
-        password=os.getenv("POSTGRES_PASSWORD", "password"),
-        db=os.getenv("POSTGRES_DB", "counseling_db"),
-    )
-else:
-    print("INFO: Skipping wait_for_postgres (using SQLite or SKIP_DB_WAIT=1)")
-
 
 # ============================================================
 # 3) APPLICATION FACTORY (PR-CLEAN-04 STEP 2)
@@ -89,6 +70,10 @@ def create_app() -> FastAPI:
     - No middleware changes
     - Only structural refactor
     """
+    # ------------------------------------------------------------
+    # STARTUP ORCHESTRATION (PR-CLEAN-04 Step 4)
+    # ------------------------------------------------------------
+    run_startup_tasks(DATABASE_URL, SKIP_DB_WAIT)
 
     # ------------------------------------------------------------
     # 3A) FASTAPI APP CREATION + CORS (CONFIGURE ONCE)
@@ -117,10 +102,9 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------
     # 3C) DB TABLE CREATION (DEV MODE / NO MIGRATIONS YET)
     # ------------------------------------------------------------
-    # Your current behavior: if SKIP_DB_WAIT=1 we skip create_all too.
-    if SKIP_DB_WAIT != "1":
-        Base.metadata.create_all(bind=engine)
-
+    # PR-CLEAN-04 Step 4:
+    # DB wait + create_all is now handled by run_startup_tasks()
+    # (kept out of create_app() to avoid duplicate execution).
     # ------------------------------------------------------------
     # 3D) BASIC HEALTH ENDPOINT
     # ------------------------------------------------------------
