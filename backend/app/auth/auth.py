@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # -------------------------------------------------------------------
 # OAUTH2 SCHEME
 # -------------------------------------------------------------------
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
 
 # -------------------------------------------------------------------
@@ -251,8 +251,8 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
     return schemas.Message(message="User created successfully")
 
 
-@router.post("/login", response_model=schemas.Token)
-def login(
+@router.post("/login-json", response_model=schemas.Token)
+def login_json(
     user_in: schemas.UserLogin,
     response: Response,
     db: Session = Depends(deps.get_db),
@@ -280,6 +280,48 @@ def login(
         },
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+@router.post("/login", response_model=schemas.Token)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    response: Response = None,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    OAuth2-compatible login (form encoded):
+    - Accepts username/password in x-www-form-urlencoded (username is email in our system)
+    - Returns short-lived access token in JSON
+    - Sets refresh token as HttpOnly cookie
+    """
+    email = form_data.username
+    password = form_data.password
+
+    user = authenticate_user(db, email, password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(
+        data={
+            "sub": user.email,
+            "role": getattr(user, "role", "student"),
+            "type": "access",
+        },
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    refresh_token = create_access_token(
+        data={
+            "sub": user.email,
+            "type": "refresh",
+        },
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    _set_refresh_cookie(response, refresh_token)
+
+    return schemas.Token(access_token=access_token, token_type="bearer")
 
     # ✅ Refresh token (longer-lived), stored only in HttpOnly cookie
     refresh_token = create_access_token(
