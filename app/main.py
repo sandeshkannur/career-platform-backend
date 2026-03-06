@@ -94,6 +94,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.get("/health")
+    def health_check():
+        return {"status": "ok"}
     # ------------------------------------------------------------
     # 3B) OPENAPI CUSTOMIZATION (JWT BEARER SUPPORT IN SWAGGER)
     # ------------------------------------------------------------
