@@ -30,6 +30,29 @@ REFRESH_COOKIE_NAME = os.getenv("REFRESH_COOKIE_NAME", "refresh_token")
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "0") == "1"  # set 1 in prod (HTTPS)
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")   # "none" if cross-site over HTTPS
 
+# -------------------------------------------------------------------
+# BETA EMAIL ALLOWLIST (PR-PROD01)
+# -------------------------------------------------------------------
+def _parse_allowed_emails(raw: Optional[str]) -> set[str]:
+    """
+    Parses allowlist env var like:
+    CP_BETA_ALLOWED_EMAILS="a@x.com, b@y.com"
+    into a lowercase set.
+    """
+    if not raw:
+        return set()
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def is_beta_email_allowed(email: str) -> bool:
+    """
+    If CP_BETA_ALLOWED_EMAILS is unset/empty => allow all (dev-friendly).
+    If set => only allow listed emails for BOTH signup and login.
+    """
+    allowed = _parse_allowed_emails(os.getenv("CP_BETA_ALLOWED_EMAILS"))
+    if not allowed:
+        return True
+    return (email or "").strip().lower() in allowed
 
 # -------------------------------------------------------------------
 # PASSWORD HASHING
@@ -214,7 +237,17 @@ def get_current_active_admin(
 # -------------------------------------------------------------------
 @router.post("/signup", status_code=status.HTTP_201_CREATED, response_model=schemas.Message)
 def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
-    if db.query(models.User).filter(models.User.email == user_in.email).first():
+    # ✅ Normalize email once
+    email_normalized = (user_in.email or "").strip().lower()
+
+    # ✅ PR-PROD01: Beta allowlist gate
+    if not is_beta_email_allowed(email_normalized):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Beta access restricted. This email is not allowlisted.",
+        )
+
+    if db.query(models.User).filter(models.User.email == email_normalized).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
@@ -238,7 +271,7 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
 
     new_user = models.User(
         full_name=user_in.full_name,
-        email=user_in.email,
+        email=email_normalized,
         hashed_password=hashed_password,
         dob=user_in.dob,
         is_minor=is_minor,
@@ -262,7 +295,17 @@ def login_json(
     - Returns short-lived access token in JSON (existing behavior).
     - Sets refresh token as HttpOnly cookie (new).
     """
-    user = authenticate_user(db, user_in.email, user_in.password)
+    # ✅ Normalize email once
+    email_normalized = (user_in.email or "").strip().lower()
+
+    # ✅ PR-PROD01: Beta allowlist gate
+    if not is_beta_email_allowed(email_normalized):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Beta access restricted. This email is not allowlisted.",
+        )
+
+    user = authenticate_user(db, email_normalized, user_in.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -274,16 +317,31 @@ def login_json(
     access_token = create_access_token(
         data={
             "sub": user.email,
-            # include role for convenience (optional but useful)
             "role": getattr(user, "role", "student"),
             "type": "access",
         },
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+
+    # ✅ Refresh token (longer-lived) stored in HttpOnly cookie
+    refresh_token = create_access_token(
+        data={
+            "sub": user.email,
+            "type": "refresh",
+        },
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    _set_refresh_cookie(response, refresh_token)
+
+    return schemas.Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer"
+    )
 @router.post("/login", response_model=schemas.Token)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    response: Response = None,
+    response: Response = Response(),
     db: Session = Depends(deps.get_db),
 ):
     """
@@ -292,8 +350,15 @@ def login(
     - Returns short-lived access token in JSON
     - Sets refresh token as HttpOnly cookie
     """
-    email = form_data.username
+    email = (form_data.username or "").strip().lower()
     password = form_data.password
+
+    # ✅ PR-PROD01: Beta allowlist gate
+    if not is_beta_email_allowed(email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Beta access restricted. This email is not allowlisted.",
+        )
 
     user = authenticate_user(db, email, password)
     if not user:
@@ -321,19 +386,13 @@ def login(
     )
     _set_refresh_cookie(response, refresh_token)
 
-    return schemas.Token(access_token=access_token, token_type="bearer")
+    
 
-    # ✅ Refresh token (longer-lived), stored only in HttpOnly cookie
-    refresh_token = create_access_token(
-        data={
-            "sub": user.email,
-            "type": "refresh",
-        },
-        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    return schemas.Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer"
     )
-    _set_refresh_cookie(response, refresh_token)
-
-    return schemas.Token(access_token=access_token, token_type="bearer")
 
 
 @router.post("/refresh", response_model=schemas.Token)
@@ -388,7 +447,11 @@ def refresh_token(
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
-    return schemas.Token(access_token=new_access_token, token_type="bearer")
+    return schemas.Token(
+        access_token=new_access_token,
+        refresh_token=token,
+        token_type="bearer"
+    )
 
 
 @router.post("/logout", response_model=schemas.Message)
