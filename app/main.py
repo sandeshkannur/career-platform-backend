@@ -85,10 +85,12 @@ def create_app() -> FastAPI:
     # so allow_origins MUST be explicit (not "*") when allow_credentials=True.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",      # Vite dev server
-            "http://127.0.0.1:5173",      # sometimes used by browsers/tools
-        ],
+            allow_origins=[
+                "http://localhost:5173",       # Vite dev server
+                "http://127.0.0.1:5173",       # sometimes used by browsers/tools
+                "https://mapyourcareer.in",    # production frontend
+                "https://www.mapyourcareer.in" # production frontend (www)
+            ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
