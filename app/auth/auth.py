@@ -83,6 +83,16 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
         return None
     return user
 
+def ensure_student_profile(db: Session, user: models.User) -> Optional[models.Student]:
+    if user.role != "student":
+        return None
+
+    student = (
+        db.query(models.Student)
+        .filter(models.Student.user_id == user.id)
+        .first()
+    )
+    return student
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -269,17 +279,34 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
             detail="Guardian email required for minors",
         )
 
-    new_user = models.User(
-        full_name=user_in.full_name,
-        email=email_normalized,
-        hashed_password=hashed_password,
-        dob=user_in.dob,
-        is_minor=is_minor,
-        guardian_email=user_in.guardian_email,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    try:
+        new_user = models.User(
+            full_name=user_in.full_name,
+            email=email_normalized,
+            hashed_password=hashed_password,
+            dob=user_in.dob,
+            is_minor=is_minor,
+            guardian_email=user_in.guardian_email,
+            role=user_in.role,
+        )
+        db.add(new_user)
+        db.flush()  # gets new_user.id without committing yet
+
+        # Automatically create student profile for student users
+        if new_user.role == "student":
+            student = models.Student(
+                user_id=new_user.id,
+                name=new_user.full_name,
+                grade=user_in.grade,
+            )
+            db.add(student)
+
+        db.commit()
+        db.refresh(new_user)
+
+    except Exception:
+        db.rollback()
+        raise
 
     return schemas.Message(message="User created successfully")
 
@@ -486,11 +513,7 @@ def get_my_session(
     user = current_user
 
     # Optional: include linked student profile (if exists)
-    student = (
-        db.query(models.Student)
-        .filter(models.Student.user_id == user.id)
-        .first()
-    )
+    student = ensure_student_profile(db, user)
 
     student_profile = None
     if student:
