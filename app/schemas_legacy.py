@@ -31,6 +31,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     dob: date
+    grade: int
     guardian_email: Optional[EmailStr] = None
     role: Optional[str] = "student"
 
