@@ -212,31 +212,59 @@ def get_student_results_history(
             )
         )
 
-    # 5) If no stored results exist, compute a fallback "latest" result
+    # 5) If no stored results exist, try computed fallback safely
     if len(results) == 0:
-        computed = get_recommendations(student_id=student.id, db=db)
+        try:
+            computed = None
+            try:
+                computed = get_recommendations(student_id=student.id, db=db)
+            except Exception:
+                computed = None
 
-        fallback_top_careers = computed.get("recommended_careers") or computed.get("top_careers") or []
+            if isinstance(computed, dict):
+                fallback_top_careers = (
+                    computed.get("recommended_careers")
+                    or computed.get("top_careers")
+                    or []
+                )
+            else:
+                fallback_top_careers = []
 
-        latest = schemas.StudentResultHistoryItem(
-            result_id=0,                 # ✅ required int (0 = computed fallback)
-            assessment_id=0,             # ✅ keep consistent; int required in many schemas
-            generated_at=datetime.utcnow(),  # ✅ required datetime
-            assessment_version="v1",
-            scoring_config_version="v1",
-            recommended_stream=None,
-            top_careers=fallback_top_careers,
-            results_payload_version="v1",
-            blocks=_build_blocks_for_result(fallback_top_careers, db=db, assessment_id=None),  # ✅ computed fallback (no assessment evidence)
-            status="computed_fallback",
-        )
+            latest = schemas.StudentResultHistoryItem(
+                result_id=0,
+                assessment_id=0,
+                generated_at=datetime.utcnow(),
+                assessment_version="v1",
+                scoring_config_version="v1",
+                recommended_stream=None,
+                top_careers=fallback_top_careers,
+                results_payload_version="v1",
+                blocks=_build_blocks_for_result(
+                    fallback_top_careers,
+                    db=db,
+                    assessment_id=None,
+                ),
+                status="computed_fallback",
+            )
 
-        return schemas.StudentResultHistoryResponse(
-            student_id=student.id,
-            total_results=1,
-            results=[latest],
-            message="No stored results found. Showing computed latest results.",
-        )
+            return schemas.StudentResultHistoryResponse(
+                student_id=student.id,
+                total_results=1 if fallback_top_careers else 0,
+                results=[latest] if fallback_top_careers else [],
+                message=(
+                    "No stored results found. Showing computed latest results."
+                    if fallback_top_careers
+                    else "No stored or computed results found yet."
+                ),
+            )
+
+        except Exception:
+            return schemas.StudentResultHistoryResponse(
+                student_id=student.id,
+                total_results=0,
+                results=[],
+                message="No stored or computed results found yet.",
+            )
 
     # 6) Normal path: return stored results
     return schemas.StudentResultHistoryResponse(
