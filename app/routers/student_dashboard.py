@@ -147,35 +147,36 @@ def get_student_dashboard(
     # ------------------------------------------------------------
     # 4) Optional: top skills from latest assessment (B7) (deterministic)
     # ------------------------------------------------------------
-        top_skills: List[schemas.StudentDashboardTopSkill] = []
-        if last_assessment is not None:
-            try:
-                scores = (
-                    db.query(
-                        models.StudentSkillScore.skill_id,
-                        models.StudentSkillScore.tier,
-                        models.StudentSkillScore.assessment_id,
-                        models.StudentSkillScore.scaled_0_100,
-                    )
-                    .filter(models.StudentSkillScore.assessment_id == last_assessment.id)
-                    .filter(models.StudentSkillScore.scoring_config_version == scoring_config_version)
-                    .order_by(desc(models.StudentSkillScore.scaled_0_100), models.StudentSkillScore.skill_id)
-                    .limit(10)
-                    .all()
-                )
+    top_skills: List[schemas.StudentDashboardTopSkill] = []
 
-                top_skills = [
-                    schemas.StudentDashboardTopSkill(
-                        skill_id=s.skill_id,
-                        scaled_0_100=s.scaled_0_100,
-                        tier=getattr(s, "tier", None),
-                        assessment_id=s.assessment_id,
-                    )
-                    for s in scores
-                ]
-            except ProgrammingError:
-                db.rollback()
-                top_skills = []
+    if last_assessment is not None:
+        try:
+            scores = (
+                db.query(
+                    models.StudentSkillScore.skill_id,
+                    models.StudentSkillScore.tier,
+                    models.StudentSkillScore.assessment_id,
+                    models.StudentSkillScore.scaled_0_100,
+                )
+                .filter(models.StudentSkillScore.assessment_id == last_assessment.id)
+                .filter(models.StudentSkillScore.scoring_config_version == scoring_config_version)
+                .order_by(desc(models.StudentSkillScore.scaled_0_100), models.StudentSkillScore.skill_id)
+                .limit(10)
+                .all()
+            )
+
+            top_skills = [
+                schemas.StudentDashboardTopSkill(
+                    skill_id=s.skill_id,
+                    scaled_0_100=s.scaled_0_100,
+                    tier=getattr(s, "tier", None),
+                    assessment_id=s.assessment_id,
+                )
+                for s in scores
+            ]
+        except ProgrammingError:
+            db.rollback()
+            top_skills = []
 
     # Deterministic message for UX if snapshot not available yet
     msg: Optional[str] = None
