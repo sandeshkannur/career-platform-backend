@@ -11,18 +11,6 @@ Key notes (DEV):
 import os
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, APIRouter
-from fastapi.middleware.cors import CORSMiddleware
-from app.core.openapi import apply_openapi_security
-from app.core.startup import run_startup_tasks
-
-import app.models  # noqa: F401  # ensures SQLAlchemy models are registered
-
-
-# ============================================================
-# 1) ENVIRONMENT LOADING / STARTUP FLAGS
-# ============================================================
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dotenv_path = os.path.join(BASE_DIR, ".env")
 
@@ -36,11 +24,9 @@ else:
         "Using system environment variables or defaults."
     )
 
-# Read key env vars used by startup logic
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SKIP_DB_WAIT = os.getenv("SKIP_DB_WAIT", "0")
 
-# Optional debug prints (safe)
 print(f"DEBUG: POSTGRES_HOST from env: {os.getenv('POSTGRES_HOST')}")
 print(f"DEBUG: POSTGRES_PORT from env: {os.getenv('POSTGRES_PORT')}")
 print(f"DEBUG: POSTGRES_USER from env: {os.getenv('POSTGRES_USER')}")
@@ -48,6 +34,11 @@ print(f"DEBUG: POSTGRES_DB from env: {os.getenv('POSTGRES_DB')}")
 print(f"DEBUG: DATABASE_URL from env: {DATABASE_URL}")
 print(f"DEBUG: SKIP_DB_WAIT from env: {SKIP_DB_WAIT}")
 
+from fastapi import FastAPI, APIRouter
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.openapi import apply_openapi_security
+from app.core.startup import run_startup_tasks
+import app.models  # noqa: F401
 
 
 # ============================================================
