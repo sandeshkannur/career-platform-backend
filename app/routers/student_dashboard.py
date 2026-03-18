@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, func
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -111,30 +112,37 @@ def get_student_dashboard(
             assessment_kpis=assessment_kpis,
             keyskill_analytics=None,
             top_skills=[],
-            message="No assessments yet",
+            message="Take your first assessment to see your dashboard insights.",
         )
 
-    # ------------------------------------------------------------
-    # 3) Pull analytics snapshot from B9 (preferred)
-    # ------------------------------------------------------------
-    analytics_row = (
-        db.query(models.StudentAnalyticsSummary)
-        .filter(models.StudentAnalyticsSummary.student_id == student_id)
-        .filter(models.StudentAnalyticsSummary.scoring_config_version == scoring_config_version)
-        .first()
-    )
+        # ------------------------------------------------------------
+        # 3) Pull analytics snapshot from B9 (preferred)
+        #    Gracefully continue if the additive B9 table is not present
+        # ------------------------------------------------------------
+        analytics_row = None
+        keyskill_analytics: Optional[schemas.StudentDashboardKeyskillAnalytics] = None
 
-    keyskill_analytics: Optional[schemas.StudentDashboardKeyskillAnalytics] = None
-    if analytics_row and getattr(analytics_row, "payload_json", None):
-        payload = project_student_safe(analytics_row.payload_json)
-
-        # Safe extraction with defaults (deterministic)
-        if isinstance(payload, dict):
-            keyskill_analytics = schemas.StudentDashboardKeyskillAnalytics(
-                overall_keyskill_summary=payload.get("overall_keyskill_summary", {}) or {},
-                distribution=payload.get("distribution", {}) or {},
-                top_keyskills=payload.get("top_keyskills", []) or [],
+        try:
+            analytics_row = (
+                db.query(models.StudentAnalyticsSummary)
+                .filter(models.StudentAnalyticsSummary.student_id == student_id)
+                .filter(models.StudentAnalyticsSummary.scoring_config_version == scoring_config_version)
+                .first()
             )
+        except ProgrammingError:
+            db.rollback()
+            analytics_row = None
+
+        if analytics_row and getattr(analytics_row, "payload_json", None):
+            payload = project_student_safe(analytics_row.payload_json)
+
+            # Safe extraction with defaults (deterministic)
+            if isinstance(payload, dict):
+                keyskill_analytics = schemas.StudentDashboardKeyskillAnalytics(
+                    overall_keyskill_summary=payload.get("overall_keyskill_summary", {}) or {},
+                    distribution=payload.get("distribution", {}) or {},
+                    top_keyskills=payload.get("top_keyskills", []) or [],
+                )
 
     # ------------------------------------------------------------
     # 4) Optional: top skills from latest assessment (B7) (deterministic)
@@ -163,7 +171,7 @@ def get_student_dashboard(
     # Deterministic message for UX if snapshot not available yet
     msg: Optional[str] = None
     if keyskill_analytics is None:
-        msg = "Analytics snapshot not available yet"
+        msg = "Your dashboard insights are being prepared. Some analytics may not be available yet."
 
     return schemas.StudentDashboardResponse(
         student_id=student_id,
