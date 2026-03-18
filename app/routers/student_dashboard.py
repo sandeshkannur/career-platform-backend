@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, func
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
-
+from app.routers.scorecard import reverse_tier
 from app import models, schemas
 from app.auth.auth import get_current_active_user
 from app.deps import get_db
@@ -154,7 +154,6 @@ def get_student_dashboard(
             scores = (
                 db.query(
                     models.StudentSkillScore.skill_id,
-                    models.StudentSkillScore.tier,
                     models.StudentSkillScore.assessment_id,
                     models.StudentSkillScore.scaled_0_100,
                 )
@@ -169,7 +168,7 @@ def get_student_dashboard(
                 schemas.StudentDashboardTopSkill(
                     skill_id=s.skill_id,
                     scaled_0_100=s.scaled_0_100,
-                    tier=getattr(s, "tier", None),
+                    tier=reverse_tier(s.scaled_0_100) if s.scaled_0_100 is not None else None,
                     assessment_id=s.assessment_id,
                 )
                 for s in scores
