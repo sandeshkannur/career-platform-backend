@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 import re
 
 from app import deps, models, schemas
@@ -65,7 +66,14 @@ def _compute_scorecard_payload(student_id: int, db: Session) -> dict:
     pr6_blocks = build_pr6_explainability_blocks(evidence)
 
     # --- Explanation objects (clusters/careers) ---
-    explanation_data = build_full_explanation(db, student_id)
+    try:
+        explanation_data = build_full_explanation(db, student_id)
+    except ProgrammingError:
+        db.rollback()
+        explanation_data = {
+            "clusters": [],
+            "careers": [],
+        }
 
     # --- Keyskill output (full numeric) ---
     keyskills_db = db.query(models.KeySkill).all()
@@ -366,7 +374,14 @@ def get_scorecard(
     cluster_scores = compute_cluster_scores(db, career_scores)
 
     # Explanations (clusters + careers)
-    explanation_data = build_full_explanation(db, student_id)
+    try:
+        explanation_data = build_full_explanation(db, student_id)
+    except ProgrammingError:
+        db.rollback()
+        explanation_data = {
+            "clusters": [],
+            "careers": [],
+        }
 
     # Prepare keyskill breakdown
     keyskills_db = db.query(models.KeySkill).all()
