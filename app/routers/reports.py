@@ -18,6 +18,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -172,16 +173,21 @@ def get_student_report(
     # ---------------------------------------------------------
     # 3) Fetch latest analytics snapshot for (student_id, version)
     #    Deterministic selection: computed_at DESC
+    #    Gracefully degrade if additive analytics table is absent
     # ---------------------------------------------------------
-    analytics_row = (
-        db.query(models.StudentAnalyticsSummary)
-        .filter(
-            models.StudentAnalyticsSummary.student_id == student_id,
-            models.StudentAnalyticsSummary.scoring_config_version == version,
+    try:
+        analytics_row = (
+            db.query(models.StudentAnalyticsSummary)
+            .filter(
+                models.StudentAnalyticsSummary.student_id == student_id,
+                models.StudentAnalyticsSummary.scoring_config_version == version,
+            )
+            .order_by(models.StudentAnalyticsSummary.computed_at.desc())
+            .first()
         )
-        .order_by(models.StudentAnalyticsSummary.computed_at.desc())
-        .first()
-    )
+    except ProgrammingError:
+        db.rollback()
+        analytics_row = None
 
     # ---------------------------------------------------------
     # 4) If analytics missing => report not ready (404)
