@@ -115,34 +115,34 @@ def get_student_dashboard(
             message="Take your first assessment to see your dashboard insights.",
         )
 
-        # ------------------------------------------------------------
-        # 3) Pull analytics snapshot from B9 (preferred)
-        #    Gracefully continue if the additive B9 table is not present
-        # ------------------------------------------------------------
+    # ------------------------------------------------------------
+    # 3) Pull analytics snapshot from B9 (preferred)
+    #    Gracefully continue if the additive B9 table is not present
+    # ------------------------------------------------------------
+    analytics_row = None
+    keyskill_analytics: Optional[schemas.StudentDashboardKeyskillAnalytics] = None
+
+    try:
+        analytics_row = (
+            db.query(models.StudentAnalyticsSummary)
+            .filter(models.StudentAnalyticsSummary.student_id == student_id)
+            .filter(models.StudentAnalyticsSummary.scoring_config_version == scoring_config_version)
+            .first()
+        )
+    except ProgrammingError:
+        db.rollback()
         analytics_row = None
-        keyskill_analytics: Optional[schemas.StudentDashboardKeyskillAnalytics] = None
 
-        try:
-            analytics_row = (
-                db.query(models.StudentAnalyticsSummary)
-                .filter(models.StudentAnalyticsSummary.student_id == student_id)
-                .filter(models.StudentAnalyticsSummary.scoring_config_version == scoring_config_version)
-                .first()
+    if analytics_row and getattr(analytics_row, "payload_json", None):
+        payload = project_student_safe(analytics_row.payload_json)
+
+        # Safe extraction with defaults (deterministic)
+        if isinstance(payload, dict):
+            keyskill_analytics = schemas.StudentDashboardKeyskillAnalytics(
+                overall_keyskill_summary=payload.get("overall_keyskill_summary", {}) or {},
+                distribution=payload.get("distribution", {}) or {},
+                top_keyskills=payload.get("top_keyskills", []) or [],
             )
-        except ProgrammingError:
-            db.rollback()
-            analytics_row = None
-
-        if analytics_row and getattr(analytics_row, "payload_json", None):
-            payload = project_student_safe(analytics_row.payload_json)
-
-            # Safe extraction with defaults (deterministic)
-            if isinstance(payload, dict):
-                keyskill_analytics = schemas.StudentDashboardKeyskillAnalytics(
-                    overall_keyskill_summary=payload.get("overall_keyskill_summary", {}) or {},
-                    distribution=payload.get("distribution", {}) or {},
-                    top_keyskills=payload.get("top_keyskills", []) or [],
-                )
 
     # ------------------------------------------------------------
     # 4) Optional: top skills from latest assessment (B7) (deterministic)
