@@ -1,0 +1,47 @@
+PR-02: Local Repo vs PR-01 Production Baseline Comparison
+
+Comparison basis:
+- PR-01 = production read-only baseline snapshot
+- PR-02 = local development repo baseline snapshot
+
+Production baseline captured in PR-01:
+- Docker/runtime state
+- DB schema inventory
+- Alembic migration state
+- OpenAPI/API contract snapshot
+
+Local repo baseline captured in PR-02:
+- SQLAlchemy models inventory
+- Router registration inventory
+
+Current comparison outcome:
+1. PR-02 confirms the local repo contains a substantial backend structure covering:
+   - users
+   - students
+   - skills
+   - key skills
+   - careers
+   - career clusters
+   - assessments
+   - analytics
+   - consent
+   - explainability
+   - translations
+   - content
+
+2. PR-02 confirms the local repo uses a shared /v1 API aggregation pattern.
+
+3. At this stage, comparison is structural and documentation-focused only.
+   - No runtime verification is performed in PR-02
+   - No schema migration analysis is performed in PR-02
+   - No endpoint response comparison is performed in PR-02
+
+4. PR-02 does not conclude that production and local are identical.
+   It only establishes the local code baseline required for safe future comparison.
+
+5. Any future implementation PR must use:
+   - PR-01 as the production baseline
+   - PR-02 as the local development baseline
+
+Safety conclusion:
+PR-02 is validation-only and introduces no backend behavior change.

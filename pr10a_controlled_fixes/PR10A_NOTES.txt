@@ -1,0 +1,12 @@
+PR-10A :: Controlled Application Fixes After Migration Readiness
+
+First endpoint:
+- /v1/students/{student_id}/dashboard
+
+Execution rules:
+- validate before modify
+- no schema change unless proven unavoidable
+- no migration execution
+- preserve response shape
+- preserve auth/ownership
+- preserve business behavior

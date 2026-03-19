@@ -1,0 +1,23 @@
+PR-10 WORKING NOTES
+===================
+
+Objective:
+Validate migration readiness for PR-09 additive scoring support tables while handling Alembic drift safely.
+
+Focus:
+- question_student_skill_weights
+- skill_keyskill_map
+- alembic_version alignment
+- safe deployment strategy
+
+Known State:
+- Local DB is drifted
+- PR-09 tables already exist physically
+- Alembic history is behind
+- PR-09 migration should NOT be executed directly on current local DB
+
+PR-10 Goal:
+Define safe validation + version-alignment approach for:
+1. clean DBs
+2. drifted DBs
+3. production rollout

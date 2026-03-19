@@ -1,0 +1,41 @@
+PR-02: Local Repo Backend Baseline
+Section: Models Inventory
+
+Source File:
+- app/models.py   (or the actual path of your uploaded models.py)
+
+Inventory:
+1. User -> users
+2. Student -> students
+3. ContextProfile -> context_profile
+4. Skill -> skills
+5. SkillAlias -> skill_aliases
+6. StudentSkillMap -> student_skill_map
+7. CareerCluster -> career_clusters
+8. career_keyskill_association -> association table
+9. Career -> careers
+10. KeySkill -> keyskills
+11. StudentKeySkillMap -> student_keyskill_map
+12. SkillKeySkillMap -> skill_keyskill_map
+13. Language -> languages
+14. QuestionTranslation -> question_translations
+15. FacetTranslation -> facet_translations
+16. ExplanationTranslation -> explanation_translations
+17. Question -> questions
+18. AssessmentQuestion -> assessment_questions
+19. Assessment -> assessments
+20. AssessmentResponse -> assessment_responses
+21. AssessmentResult -> assessment_results
+22. StudentSkillScore -> student_skill_scores
+23. StudentAnalyticsSummary -> student_analytics_summary
+24. ConsentLog -> consent_logs
+25. AssociatedQuality -> associated_qualities
+26. AQFacet -> aq_facets
+27. QuestionFacetTag -> question_facet_tags
+28. QuestionStudentSkillWeight -> question_student_skill_weights
+29. ExplainabilityContent -> explainability_content
+
+Notes:
+- This file is a read-only inventory for PR-02 baseline capture.
+- No schema changes are introduced.
+- No application behavior is changed.

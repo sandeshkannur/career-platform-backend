@@ -1,0 +1,35 @@
+PR-07 EXECUTIVE SUMMARY
+======================
+
+Objective:
+Validate and document the currently implemented scoring pipeline before making any scoring-related changes.
+
+Outcome:
+- Confirmed scoring path already exists end-to-end
+- No backend change required in PR-07
+- No schema/API/frontend change required
+
+Confirmed implemented flow:
+AssessmentResponse
+-> question_student_skill_weights
+-> compute_and_persist_skill_scores()
+-> student_skill_scores
+-> sync_skill_scores_to_keyskills()
+-> student_keyskill_map
+-> compute_career_scores()
+-> compute_cluster_scores()
+-> recommendations / scorecard / paid analytics / assessment result generation
+
+Key findings:
+1. submit_assessment is the primary scoring entrypoint
+2. student_skill_scores is the canonical persisted skill-scoring table
+3. keyskills are derived in a post-scoring sync step, not in the primary scoring engine
+4. career and cluster scoring are downstream consumers of student_keyskill_map
+5. scoring path already includes idempotency protections
+
+Important note:
+- student_skill_scores.student_id currently aligns to users.id, while downstream keyskill sync maps through students.user_id to students.id
+
+Conclusion:
+PR-07 is validation complete.
+No scoring redesign is justified at this stage.

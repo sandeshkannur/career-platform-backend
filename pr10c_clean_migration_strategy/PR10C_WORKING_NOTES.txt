@@ -1,0 +1,29 @@
+PR-10C CLEAN MIGRATION EXECUTION STRATEGY
+========================================
+
+Objective:
+Define and validate the safe execution path for Alembic migrations on a clean authoritative database.
+
+Background:
+- PR-10A stabilized runtime behavior.
+- PR-10B proved local DB is drifted and non-authoritative.
+- Therefore migration truth must be validated only on a clean DB path.
+
+Local Rule:
+- Do not run alembic upgrade head on the current local drifted DB.
+- Do not stamp the current local drifted DB.
+- Use local only for development/testing, not migration truth.
+
+Target:
+- Validate migration execution path on a clean environment.
+
+Alembic graph validation:
+- alembic history checked
+- alembic heads = 4d2a2c581f31
+- migration graph is linear with a single head
+
+PR-10C decision:
+- The migration chain itself is valid
+- The current local DB is invalid as a migration-truth environment
+- Clean-environment execution is required for authoritative validation
+- PR-10C will define execution strategy, not perform local reconciliation

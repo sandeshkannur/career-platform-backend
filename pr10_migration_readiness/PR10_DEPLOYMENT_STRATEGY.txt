@@ -1,0 +1,87 @@
+PR-10 DEPLOYMENT STRATEGY
+========================
+
+Objective:
+Define safe rollout guidance for PR-09 additive scoring support schema in different environment states.
+
+Validated Facts:
+- question_student_skill_weights exists physically in local DB
+- skill_keyskill_map exists physically in local DB
+- Alembic version is 3293623a055c
+- Local DB is drifted: physical schema is ahead of Alembic history
+- Direct execution of PR-09 migration on current local DB is unsafe
+
+Environment-Specific Strategy
+-----------------------------
+
+1. Clean Environment
+Definition:
+- PR-09 tables do not yet exist
+- Alembic history matches expected pre-PR-09 state
+
+Safe Action:
+- Execute PR-09 migration normally through Alembic
+
+Expected Result:
+- Tables created once
+- Constraints created once
+- Indexes created once
+- Alembic version advances normally
+
+2. Drifted Environment
+Definition:
+- PR-09 tables already exist physically
+- Alembic history does not reflect that state
+
+Safe Action:
+- Do NOT run PR-09 migration directly
+- Use controlled Alembic reconciliation / stamp approach only after environment-specific validation
+
+Expected Result:
+- No duplicate CREATE TABLE execution
+- No duplicate constraint/index creation attempts
+- Alembic history aligned to actual schema state
+
+3. Production Environment
+Definition:
+- Must be treated as highest-risk environment
+- No assumptions allowed
+
+Safe Action:
+- First validate physical existence of PR-09 tables and current Alembic revision
+- If production is clean for PR-09 scope, run migration normally
+- If production is drifted for PR-09 scope, use controlled reconciliation plan
+- Do not improvise manual destructive fixes
+
+Production Safety Rules
+-----------------------
+- Never run PR-09 blindly on a drifted DB
+- Never drop/recreate validated working tables
+- Never change app behavior as part of migration reconciliation
+- Separate schema validation from logic changes
+- Preserve frontend/API contracts completely
+
+Known Observation
+-----------------
+skill_keyskill_map contains:
+- uq_skill_keyskill = active UNIQUE constraint-backed index
+- ux_skill_keyskill = redundant extra unique index
+
+Decision for PR-10:
+- Preserve as-is
+- Do not clean up during migration-readiness work
+- Consider future controlled cleanup only if separately validated across environments
+
+Final PR-10 Decision
+--------------------
+PR-10 is completed as:
+- migration-readiness validation
+- drift confirmation
+- deployment strategy definition
+- Alembic reconciliation guidance
+
+PR-10 is NOT:
+- direct schema execution on current local DB
+- application logic refactor
+- API change
+- scoring redesign

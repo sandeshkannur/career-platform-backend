@@ -1,0 +1,47 @@
+             List of relations
+ Schema |     Name     | Type  |   Owner    
+--------+--------------+-------+------------
+ public | consent_logs | table | counseling
+(1 row)
+
+                                              Table "public.assessment_results"
+         Column         |            Type             | Collation | Nullable |                    Default                     
+------------------------+-----------------------------+-----------+----------+------------------------------------------------
+ id                     | integer                     |           | not null | nextval('assessment_results_id_seq'::regclass)
+ assessment_id          | integer                     |           | not null | 
+ recommended_stream     | character varying           |           |          | 
+ recommended_careers    | jsonb                       |           |          | 
+ skill_tiers            | jsonb                       |           |          | 
+ contrib_trace          | jsonb                       |           |          | 
+ assessment_version     | character varying(32)       |           |          | 
+ scoring_config_version | character varying(32)       |           |          | 
+ content_version        | character varying(32)       |           |          | 
+ generated_at           | timestamp without time zone |           | not null | 
+Indexes:
+    "assessment_results_pkey" PRIMARY KEY, btree (id)
+    "assessment_results_assessment_id_key" UNIQUE CONSTRAINT, btree (assessment_id)
+    "ix_assessment_results_assessment_version" btree (assessment_version)
+    "ix_assessment_results_content_version" btree (content_version)
+    "ix_assessment_results_id" btree (id)
+    "ix_assessment_results_scoring_config_version" btree (scoring_config_version)
+Foreign-key constraints:
+    "assessment_results_assessment_id_fkey" FOREIGN KEY (assessment_id) REFERENCES assessments(id)
+
+                 List of relations
+ Schema |         Name         | Type  |   Owner    
+--------+----------------------+-------+------------
+ public | assessment_questions | table | counseling
+(1 row)
+
+                      List of relations
+ Schema |              Name              | Type  |   Owner    
+--------+--------------------------------+-------+------------
+ public | question_student_skill_weights | table | counseling
+(1 row)
+
+                List of relations
+ Schema |        Name        | Type  |   Owner    
+--------+--------------------+-------+------------
+ public | skill_keyskill_map | table | counseling
+(1 row)
+

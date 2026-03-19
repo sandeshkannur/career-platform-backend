@@ -1,0 +1,43 @@
+PR-02: Local Repo Backend Baseline
+Section: Routers Inventory
+
+Source File:
+- app/main.py   (or the actual path of your uploaded main.py)
+
+Base API Prefix:
+- /v1
+
+Routers registered in main.py:
+1. auth_router
+2. admin_router
+3. assessment_router
+4. career_cluster_router
+5. career_router
+6. skill_router
+7. keyskill_router
+8. student_router
+9. student_skill_map_router
+10. student_keyskill_map_router
+11. career_keyskill_map_router
+12. recommendation_router
+13. analytics_router
+14. paid_analytics_router
+15. scorecard_router
+16. questions_random_router
+17. questions_localized_router
+18. student_dashboard_router
+19. student_assessment_history_router
+20. student_results_history_router
+21. consent_router
+22. reports_router
+23. content_router
+
+Router registration notes:
+- main.py uses a shared api_router aggregated under /v1.
+- Individual routers are included into api_router before api_router is mounted on the FastAPI app.
+- Health endpoints also exist outside the /v1 business router aggregation.
+
+Notes:
+- This file is a read-only inventory for PR-02 baseline capture.
+- No API contract changes are introduced.
+- No router behavior is changed.

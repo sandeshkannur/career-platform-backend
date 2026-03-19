@@ -1,0 +1,159 @@
+public.alembic_version|1|version_num|character varying|NO|
+public.aq_facets|1|facet_id|character varying|NO|
+public.aq_facets_v|1|id|integer|NO|nextval('aq_facets_v_id_seq'::regclass)
+public.aq_facets_v|2|assessment_version|character varying|NO|
+public.aq_facets_v|3|facet_code|character varying|NO|
+public.aq_facets_v|4|aq_code|character varying|NO|
+public.aq_facets_v|5|name_en|text|NO|
+public.aq_facets_v|6|name_hi|text|YES|
+public.aq_facets_v|7|name_ta|text|YES|
+public.aq_facets_v|8|description_en|text|YES|
+public.aq_facets_v|9|description_hi|text|YES|
+public.aq_facets_v|10|description_ta|text|YES|
+public.aq_facets_v|11|status|character varying|NO|'active'::character varying
+public.aq_facets_v|12|created_at|timestamp with time zone|NO|now()
+public.aq_facets_v|13|updated_at|timestamp with time zone|NO|now()
+public.assessment_questions|1|id|integer|NO|nextval('assessment_questions_id_seq'::regclass)
+public.assessment_questions|2|assessment_id|integer|NO|
+public.assessment_questions|3|question_id|integer|NO|
+public.assessment_questions|4|assessment_version|character varying|NO|
+public.assessment_questions|5|question_code|character varying|NO|
+public.assessment_questions|6|created_at|timestamp without time zone|NO|now()
+public.assessment_responses|1|id|integer|NO|nextval('assessment_responses_id_seq'::regclass)
+public.assessment_responses|2|assessment_id|integer|NO|
+public.assessment_responses|3|question_code|character varying|NO|
+public.assessment_responses|4|answer|character varying|NO|
+public.assessment_responses|5|idempotency_key|character varying|YES|
+public.assessment_responses|6|question_id|integer|NO|
+public.assessment_results|1|id|integer|NO|nextval('assessment_results_id_seq'::regclass)
+public.assessment_results|2|assessment_id|integer|NO|
+public.assessment_results|3|recommended_stream|character varying|YES|
+public.assessment_results|4|recommended_careers|jsonb|YES|
+public.assessment_results|5|generated_at|timestamp without time zone|NO|
+public.assessment_results|6|skill_tiers|jsonb|YES|
+public.assessment_results|7|assessment_version|character varying|YES|
+public.assessment_results|8|scoring_config_version|character varying|YES|
+public.assessment_results|9|content_version|character varying|YES|
+public.assessment_results|10|contrib_trace|jsonb|YES|
+public.assessments|1|id|integer|NO|nextval('assessments_id_seq'::regclass)
+public.assessments|2|user_id|integer|NO|
+public.assessments|3|submitted_at|timestamp without time zone|NO|
+public.assessments|4|assessment_version|character varying|NO|
+public.assessments|5|scoring_config_version|character varying|NO|
+public.assessments|6|question_pool_version|character varying|NO|'v1'::character varying
+public.associated_qualities_v|1|id|integer|NO|nextval('associated_qualities_v_id_seq'::regclass)
+public.associated_qualities_v|2|assessment_version|character varying|NO|
+public.associated_qualities_v|3|aq_code|character varying|NO|
+public.associated_qualities_v|4|name_en|text|NO|
+public.associated_qualities_v|5|name_hi|text|YES|
+public.associated_qualities_v|6|name_ta|text|YES|
+public.associated_qualities_v|7|status|character varying|NO|'active'::character varying
+public.associated_qualities_v|8|created_at|timestamp with time zone|NO|now()
+public.associated_qualities_v|9|updated_at|timestamp with time zone|NO|now()
+public.career_clusters|1|id|integer|NO|nextval('career_clusters_id_seq'::regclass)
+public.career_clusters|2|name|character varying|NO|
+public.career_clusters|3|description|character varying|YES|
+public.career_keyskill_association|1|career_id|integer|YES|
+public.career_keyskill_association|2|keyskill_id|integer|YES|
+public.career_keyskill_association|3|weight_percentage|integer|NO|0
+public.careers|1|id|integer|NO|nextval('careers_id_seq'::regclass)
+public.careers|2|title|character varying|NO|
+public.careers|3|description|character varying|YES|
+public.careers|4|cluster_id|integer|YES|
+public.consent_logs|1|id|integer|NO|nextval('consent_logs_id_seq'::regclass)
+public.consent_logs|2|student_id|integer|NO|
+public.consent_logs|3|student_user_id|integer|NO|
+public.consent_logs|4|guardian_email|character varying|NO|
+public.consent_logs|5|token_jti|character varying|YES|
+public.consent_logs|6|status|character varying|NO|
+public.consent_logs|7|reason|character varying|YES|
+public.consent_logs|8|message|text|YES|
+public.consent_logs|9|verified_at|timestamp with time zone|YES|
+public.consent_logs|10|expires_at|timestamp with time zone|YES|
+public.consent_logs|11|ip|character varying|YES|
+public.consent_logs|12|user_agent|text|YES|
+public.consent_logs|13|created_at|timestamp with time zone|NO|now()
+public.context_profile|1|id|integer|NO|nextval('context_profile_id_seq'::regclass)
+public.context_profile|2|assessment_id|integer|NO|
+public.context_profile|3|student_id|integer|NO|
+public.context_profile|4|assessment_version|character varying|NO|
+public.context_profile|5|scoring_config_version|character varying|NO|
+public.context_profile|6|ses_band|character varying|NO|
+public.context_profile|7|education_board|character varying|NO|
+public.context_profile|8|support_level|character varying|NO|
+public.context_profile|9|resource_access|character varying|YES|
+public.context_profile|10|cps_score|double precision|NO|
+public.context_profile|11|computed_at|timestamp with time zone|NO|now()
+public.explanation_translations|1|id|integer|NO|nextval('explanation_translations_id_seq'::regclass)
+public.explanation_translations|2|content_version|character varying|NO|
+public.explanation_translations|3|locale|character varying|NO|
+public.explanation_translations|4|explanation_key|character varying|NO|
+public.explanation_translations|5|text|text|NO|
+public.explanation_translations|6|is_active|boolean|NO|true
+public.explanation_translations|7|updated_at|timestamp with time zone|NO|now()
+public.facet_translations|1|id|integer|NO|nextval('facet_translations_id_seq'::regclass)
+public.facet_translations|2|facet_id|character varying|NO|
+public.facet_translations|3|locale|character varying|NO|
+public.facet_translations|4|facet_name|text|NO|
+public.facet_translations|5|updated_at|timestamp with time zone|NO|now()
+public.keyskills|1|id|integer|NO|nextval('keyskills_id_seq'::regclass)
+public.keyskills|2|name|character varying|NO|
+public.keyskills|3|cluster_id|integer|YES|
+public.languages|1|code|character varying|NO|
+public.languages|2|name|character varying|NO|
+public.languages|3|native_name|character varying|YES|
+public.languages|4|direction|character varying|NO|'ltr'::character varying
+public.languages|5|is_active|boolean|NO|true
+public.languages|6|created_at|timestamp with time zone|NO|now()
+public.question_facet_tags_v|1|id|integer|NO|nextval('question_facet_tags_v_id_seq'::regclass)
+public.question_facet_tags_v|2|assessment_version|character varying|NO|
+public.question_facet_tags_v|3|question_code|character varying|NO|
+public.question_facet_tags_v|4|facet_code|character varying|NO|
+public.question_facet_tags_v|5|tag_weight|integer|NO|1
+public.question_facet_tags_v|6|created_at|timestamp with time zone|NO|now()
+public.question_facet_tags_v|7|updated_at|timestamp with time zone|NO|now()
+public.question_translations|1|id|integer|NO|nextval('question_translations_id_seq'::regclass)
+public.question_translations|2|assessment_version|character varying|NO|
+public.question_translations|3|question_id|integer|NO|
+public.question_translations|4|locale|character varying|NO|
+public.question_translations|5|question_text|text|NO|
+public.question_translations|6|updated_at|timestamp with time zone|NO|now()
+public.questions|1|id|integer|NO|nextval('questions_id_seq'::regclass)
+public.questions|2|question_code|character varying|YES|
+public.questions|3|assessment_version|character varying|NO|
+public.skill_aliases|1|id|integer|NO|nextval('skill_aliases_id_seq'::regclass)
+public.skill_aliases|2|entity_type|character varying|NO|
+public.skill_aliases|3|assessment_version|character varying|YES|
+public.skill_aliases|4|alias|character varying|NO|
+public.skill_aliases|5|canonical_code|character varying|NO|
+public.skill_aliases|6|is_active|boolean|NO|true
+public.skill_aliases|7|notes|text|YES|
+public.skill_aliases|8|created_at|timestamp without time zone|NO|now()
+public.skill_aliases|9|updated_at|timestamp without time zone|NO|now()
+public.skills|1|id|integer|NO|nextval('skills_id_seq'::regclass)
+public.skills|2|name|character varying|NO|
+public.student_keyskill_map|1|id|integer|NO|nextval('student_keyskill_map_id_seq'::regclass)
+public.student_keyskill_map|2|student_id|integer|NO|
+public.student_keyskill_map|3|keyskill_id|integer|NO|
+public.student_skill_map|1|id|integer|NO|nextval('student_skill_map_id_seq'::regclass)
+public.student_skill_map|2|student_id|integer|NO|
+public.student_skill_map|3|skill_id|integer|NO|
+public.student_skill_scores|1|id|integer|NO|nextval('student_skill_scores_id_seq'::regclass)
+public.student_skill_scores|2|assessment_id|integer|YES|
+public.student_skill_scores|3|scoring_config_version|character varying|YES|
+public.student_skill_scores|4|hsi_score|double precision|YES|
+public.student_skill_scores|5|cps_score_used|double precision|YES|
+public.student_skill_scores|6|assessment_version|character varying|YES|
+public.students|1|id|integer|NO|nextval('students_id_seq'::regclass)
+public.students|2|name|character varying|NO|
+public.students|3|grade|integer|NO|
+public.students|4|user_id|integer|YES|
+public.users|1|id|integer|NO|nextval('users_id_seq'::regclass)
+public.users|2|full_name|character varying|NO|
+public.users|3|email|character varying|NO|
+public.users|4|hashed_password|character varying|NO|
+public.users|5|dob|date|NO|
+public.users|6|is_minor|boolean|NO|
+public.users|7|guardian_email|character varying|YES|
+public.users|8|role|character varying|NO|
+public.users|9|tier|character varying|NO|'free'::character varying

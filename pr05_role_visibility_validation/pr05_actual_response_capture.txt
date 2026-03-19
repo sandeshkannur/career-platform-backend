@@ -1,0 +1,77 @@
+PR-05 Role Visibility Validation
+Actual Response Capture Sheet
+
+Validation tier model:
+- Tier 1: student
+- Tier 2: privileged (admin/counsellor)
+
+For each endpoint below, capture:
+1. caller role
+2. target student_id
+3. expected result
+4. actual HTTP status
+5. whether ownership restriction worked
+6. whether internal/numeric/richer fields were exposed
+7. pass/fail
+8. notes
+
+----------------------------------------------------------------
+1. GET /v1/recommendations/{student_id}
+- Student, own student_id:
+- Student, other student_id:
+- Privileged, any student_id:
+
+2. GET /v1/recommendations/admin/{student_id}
+- Student:
+- Privileged:
+
+3. GET /v1/paid-analytics/{student_id}
+- Student:
+- Privileged:
+
+4. GET /v1/paid-analytics/{student_id}/student
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+5. GET /v1/paid-analytics/{student_id}/deep
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+6. GET /v1/scorecard/admin/{student_id}
+- Student:
+- Privileged:
+
+7. GET /v1/scorecard/{student_id}
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+8. GET /v1/student-dashboard/{student_id}/dashboard
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+9. GET /v1/student-assessment-history/students/{id}/assessments
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+10. GET /v1/student-results-history/students/{id}/results
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+11. GET /v1/reports/scorecard/{student_id}
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+12. GET /v1/reports/{student_id}
+- Student, own student_id:
+- Student, other student_id:
+- Privileged:
+
+Key rule:
+A failed authorization with 401/403 can still be a PASS for PR-05 if that is the intended control behavior.

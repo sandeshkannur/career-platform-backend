@@ -1,0 +1,11 @@
+PR-08 psql command examples
+==================================================
+
+# If running from host against Docker container:
+docker exec -i <postgres_container_name> psql -U <db_user> -d <db_name> -P pager=off -f /path/in/container/pr08_explainability_validation_queries.sql
+
+# If running locally:
+psql -h <host> -U <db_user> -d <db_name> -P pager=off -f .\pr08_explainability_flow\pr08_explainability_validation_queries.sql
+
+# To output results to a file:
+psql -h <host> -U <db_user> -d <db_name> -P pager=off -f .\pr08_explainability_flow\pr08_explainability_validation_queries.sql > .\pr08_explainability_flow\pr08_query_results.txt

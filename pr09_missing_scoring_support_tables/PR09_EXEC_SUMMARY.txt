@@ -1,0 +1,42 @@
+PR-09 EXECUTIVE SUMMARY
+======================
+
+Objective:
+Add missing scoring support tables in a production-safe, additive-only manner:
+- question_student_skill_weights
+- skill_keyskill_map
+
+What was validated:
+1. Both tables are present in local SQLAlchemy models.
+2. Both tables are absent from PR-01 production baseline inventory.
+3. No alternate equivalent production tables were found under different names.
+4. Offline migration SQL was generated successfully and is additive-only.
+5. Local DB was inspected before applying migration.
+
+Critical finding:
+The local validation DB is in a drifted state:
+- Alembic current = 3293623a055c
+- But physical tables already exist for:
+  - consent_logs
+  - assessment_questions
+  - question_student_skill_weights
+  - skill_keyskill_map
+
+Implication:
+PR-09 should NOT be executed directly on this local DB because schema objects already exist while Alembic history is behind.
+
+PR-09 status:
+- Migration file created
+- migration_sql artifact created
+- Structural validation completed
+- Local drift documented
+- Ready for controlled execution only in a clean validation DB or correctly version-aligned environment
+
+Frontend/API impact:
+- None
+
+Business behavior impact:
+- None
+
+Recommended next action:
+Validate and apply PR-09 only in a clean database environment, or reconcile Alembic history separately before any execution.
