@@ -1,0 +1,107 @@
+PR-05 Role Visibility Validation
+Code-Derived Role Expectation Matrix
+
+Purpose:
+This file captures what the router code appears to enforce before API-response validation.
+
+1. GET /v1/recommendations/{student_id}
+- Auth: get_current_active_user
+- Student rule: allowed only for own student_id
+- Expected visibility: student-safe recommendation output
+- Evidence:
+  - current_user resolved via get_current_active_user
+  - student ownership check via students.user_id == current_user.id
+  - student-safe projection import present: project_student_safe
+
+2. GET /v1/recommendations/admin/{student_id}
+- Auth: require_roles("admin", "counsellor")
+- Student rule: not allowed
+- Expected visibility: richer admin/counsellor recommendation output
+- Evidence:
+  - explicit role restriction to admin/counsellor
+
+3. GET /v1/paid-analytics/{student_id}
+- Auth: require_admin_or_counsellor
+- Student rule: not allowed
+- Expected visibility: richer analytics visibility for admin/counsellor
+- Evidence:
+  - dependencies=[Depends(require_admin_or_counsellor)]
+
+4. GET /v1/paid-analytics/{student_id}/student
+- Auth: require_role("student")
+- Student rule: student-only route
+- Expected visibility: student-safe analytics projection
+- Evidence:
+  - dependencies=[Depends(require_role("student"))]
+
+5. GET /v1/paid-analytics/{student_id}/deep
+- Auth: require_roles("admin", "counsellor", "student")
+- Student rule: allowed, but route doc says student-safe / keys only
+- Expected visibility: role-sensitive deep insights, but student-safe for student role
+- Evidence:
+  - dependencies=[Depends(require_roles("admin", "counsellor", "student"))]
+  - doc hint says: Deep Insights (KEYS ONLY; student-safe; CMS-controlled)
+
+6. GET /v1/scorecard/admin/{student_id}
+- Auth: require_admin_or_counsellor
+- Student rule: not allowed
+- Expected visibility: full numeric/admin-counsellor scorecard
+- Evidence:
+  - explicit dependency require_admin_or_counsellor
+  - doc hint says full scorecard view (numeric fields allowed)
+
+7. GET /v1/scorecard/{student_id}
+- Auth: get_current_active_user
+- Student rule: student can only access own student_id
+- Expected visibility: student-safe scorecard
+- Evidence:
+  - _assert_student_owns_student_id(...)
+  - _sanitize_scorecard_payload(raw_payload)
+
+8. GET /v1/student-dashboard/{student_id}/dashboard
+- Auth: get_current_active_user
+- Student rule: only own dashboard
+- Expected visibility: student-safe dashboard view
+- Evidence:
+  - code comments explicitly state student can only access own dashboard
+  - ownership check: student.user_id != current_user.id => 403
+  - student_safe projection import present
+
+9. GET /v1/student-assessment-history/students/{id}/assessments
+- Auth: get_current_active_user
+- Student rule: only own assessment history
+- Expected visibility: student-safe history only
+- Evidence:
+  - ownership check with 403 on mismatch
+  - data filtered via assessments.user_id == current_user.id
+
+10. GET /v1/student-results-history/students/{id}/results
+- Auth: get_current_active_user
+- Student rule: only own results
+- Expected visibility: student-safe results history only
+- Evidence:
+  - ownership check with 403 on mismatch
+  - results derived only from current_user-linked assessments
+
+11. GET /v1/reports/scorecard/{student_id}
+- Auth: get_current_active_user
+- Student rule: only own report
+- Expected visibility: student-safe report for student; richer allowed only if role logic permits
+- Evidence:
+  - role = getattr(current_user, "role", None)
+  - code says force student-safe mode always for students
+  - ownership enforced for student role
+
+12. GET /v1/reports/{student_id}
+- Auth: get_current_active_user
+- Student rule: only own report
+- Expected visibility: student-safe report response
+- Evidence:
+  - ownership check with 403 on mismatch
+
+Initial PR-05 conclusion from code inspection:
+- Role restrictions are present in router layer for major in-scope endpoints.
+- Ownership checks are present for student-facing routes.
+- Student-safe projection/sanitization appears intentionally implemented.
+- No schema or API contract change is justified from code inspection alone.
+- Next step is API-response validation against real tokens and real student IDs.

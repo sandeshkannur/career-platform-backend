@@ -1,0 +1,20 @@
+5c50f1279676 -> ec55ebc40479 (head), add missing assessment and versioned knowledge pack tables
+3293623a055c -> 5c50f1279676, add consent_logs table
+b1cd328d0d95 -> 3293623a055c, baseline-clean
+870d6eef49cd -> b1cd328d0d95, PR21 facet translations table
+c1fb35b70dc4 -> 870d6eef49cd, PR21 i18n foundation tables
+e7cf6ce8be79 -> c1fb35b70dc4, PR19 add question_pool_version to assessments
+8c612814971d -> e7cf6ce8be79, pr44 add contrib_trace to assessment_results
+650d8e341a0f -> 8c612814971d, pr42 add skill_aliases table
+7c0f2237500e -> 650d8e341a0f, pr40 add version bundle to assessment_results
+8baaf45df8af -> 7c0f2237500e, PR33 assessment_responses question_id int FK + question_code
+51e2c8c77f70 -> 8baaf45df8af, add idempotency key to assessment_responses
+0ea029cf1a6d -> 51e2c8c77f70, add_hsi_persistence_to_student_skill_scores
+b839cc4f8ec1 -> 0ea029cf1a6d, enforce immutable assessment responses
+35d279b3686d -> b839cc4f8ec1, add version pins to assessments
+6d561fe21dcd -> 35d279b3686d, add context_profile table
+65c24201a283 -> 6d561fe21dcd, add user_id to students
+b52cd1604508 -> 65c24201a283, add assessment_version to questions
+3e8a4b9f2d31 -> b52cd1604508, Add weight_percentage to career_keyskill_association
+f66212d1b2fa -> 3e8a4b9f2d31, convert recommended_careers to jsonb and add skill_tiers
+<base> -> f66212d1b2fa, Add assessments tables

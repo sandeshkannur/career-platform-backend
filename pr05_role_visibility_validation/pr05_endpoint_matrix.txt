@@ -1,0 +1,84 @@
+PR-05 Role Visibility Validation
+Endpoint Validation Matrix
+
+Base prefix assumption:
+- /v1
+
+Endpoints identified from in-scope routers:
+
+1. recommendations.py
+- GET /v1/recommendations/{student_id}
+  Function: get_recommendations
+  Expected concern: student-safe recommendation output
+- GET /v1/recommendations/admin/{student_id}
+  Function: get_recommendations_admin
+  Expected concern: admin/counsellor richer visibility
+
+2. analytics.py
+- GET /v1/analytics/health
+  Function: analytics_placeholder
+  Expected concern: none / likely out of role-comparison scope
+  Note: keep recorded, but not a primary PR-05 comparison target
+
+3. paid_analytics.py
+- GET /v1/paid-analytics/{student_id}
+  Function: route present
+  Expected concern: richer analytics visibility
+- GET /v1/paid-analytics/{student_id}/student
+  Function: route present
+  Expected concern: student-safe analytics projection
+- GET /v1/paid-analytics/{student_id}/deep
+  Function: route present
+  Expected concern: role-sensitive deep insights visibility
+
+4. scorecard.py
+- GET /v1/scorecard/admin/{student_id}
+  Function: get_scorecard_admin
+  Expected concern: admin/counsellor score visibility
+- GET /v1/scorecard/{student_id}
+  Function: get_scorecard
+  Expected concern: student-safe scorecard visibility
+
+5. student_dashboard.py
+- GET /v1/student-dashboard/{student_id}/dashboard
+  Function: route present
+  Expected concern: student dashboard output visibility
+
+6. student_assessment_history.py
+- GET /v1/student-assessment-history/students/{id}/assessments
+  Function: route present
+  Expected concern: role-safe assessment history access
+
+7. student_results_history.py
+- GET /v1/student-results-history/students/{id}/results
+  Function: route present
+  Expected concern: role-safe results history access
+
+8. reports.py
+- GET /v1/reports/scorecard/{student_id}
+  Function: get_scorecard_report
+  Expected concern: report-level score visibility
+- GET /v1/reports/{student_id}
+  Function: get_student_report
+  Expected concern: report-level student/internal data exposure
+
+Primary PR-05 endpoints to validate first:
+- GET /v1/recommendations/{student_id}
+- GET /v1/recommendations/admin/{student_id}
+- GET /v1/paid-analytics/{student_id}
+- GET /v1/paid-analytics/{student_id}/student
+- GET /v1/paid-analytics/{student_id}/deep
+- GET /v1/scorecard/admin/{student_id}
+- GET /v1/scorecard/{student_id}
+- GET /v1/student-dashboard/{student_id}/dashboard
+- GET /v1/student-assessment-history/students/{id}/assessments
+- GET /v1/student-results-history/students/{id}/results
+- GET /v1/reports/scorecard/{student_id}
+- GET /v1/reports/{student_id}
+
+Secondary / informational only:
+- GET /v1/analytics/health
+
+PR-05 rule:
+Validate actual role visibility first.
+Do not change backend logic or schema unless actual exposure/control defects are found.

@@ -1,0 +1,17 @@
+PR-05 Live Role Inventory Finding
+
+Validated from live production-connected database via running backend container:
+
+users table rows:
+- id=1 | sandeshkannur@gmail.com | admin
+- id=2 | lakshmi.ggk@gmail.com | student
+- id=3 | teststudent1@mapyourcareer.in | student
+- id=4 | teststudent2@mapyourcareer.in | student
+- id=5 | teststudent3@mapyourcareer.in | student
+
+PR-05 implication:
+- Current live privileged tier is admin only.
+- No live counsellor user exists at present.
+- Student tier validation can proceed immediately.
+- Privileged-route validation requires valid admin credentials.
+- No schema or API change is justified from this finding.

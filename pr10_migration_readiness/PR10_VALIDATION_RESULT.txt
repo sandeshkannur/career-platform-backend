@@ -1,0 +1,55 @@
+PR-10 VALIDATION RESULT
+======================
+
+Objective:
+Validate migration readiness for PR-09 additive scoring support tables.
+
+Validation Outcome:
+PASS with drift confirmed.
+
+Findings:
+1. Alembic version currently recorded:
+   3293623a055c
+
+2. PR-09 target tables already exist physically:
+   - question_student_skill_weights
+   - skill_keyskill_map
+
+3. Required reference tables exist:
+   - questions
+   - skills
+   - keyskills
+
+4. Structural validation:
+   - Columns present
+   - Primary keys present
+   - Foreign keys present
+   - Unique constraints present
+   - Indexes present
+
+5. Drift conclusion:
+   Local DB is physically ahead of Alembic history for PR-09 scope.
+   Therefore PR-09 migration must NOT be executed directly on this local DB.
+
+6. Safe execution guidance:
+   - Clean DB: PR-09 migration may be executed normally
+   - Drifted DB: use controlled Alembic alignment strategy, not duplicate CREATE TABLE execution
+
+7. Additional observation:
+   skill_keyskill_map contains two unique indexes on the same key pair:
+   - uq_skill_keyskill
+   - ux_skill_keyskill
+   This should be documented and preserved for now unless separately validated for cleanup.
+
+8. Duplicate unique index observation:
+   On skill_keyskill_map:
+   - uq_skill_keyskill is the active UNIQUE constraint-backed index
+   - ux_skill_keyskill is an additional redundant unique index on the same key pair
+   Current recommendation:
+   - preserve for PR-10 completion
+   - do not drop during migration-readiness validation
+   - consider separate controlled cleanup migration later if validated across environments
+
+Decision:
+PR-10 should proceed as migration-readiness and Alembic reconciliation guidance,
+not as direct schema execution on the current local DB.

@@ -1,0 +1,80 @@
+PR-05 EXECUTIVE SUMMARY
+======================
+
+Objective:
+Validate role-based visibility and ownership enforcement for student-facing APIs without introducing any schema or API changes.
+
+Scope:
+- Runtime validation using student role token
+- Tested both:
+  - Own student access
+  - Cross-student access
+
+----------------------------------------
+KEY FINDINGS
+----------------------------------------
+
+1. Authorization Enforcement
+- PASS across all tested endpoints
+- Cross-student access consistently blocked with 403/forbidden responses
+
+2. Student Self-Access Behavior
+- Fully working endpoints:
+  - /v1/students/{student_id}/assessments
+  - /v1/students/{student_id}/results
+  - /v1/recommendations/{student_id} (controlled response)
+
+- Broken endpoints:
+  - /v1/analytics/scorecard/{student_id}
+  - /v1/students/{student_id}/dashboard
+  - /v1/paid-analytics/{student_id}/student
+  - /v1/reports/{student_id}
+
+3. Root Cause Pattern
+All failures are due to backend ? production DB misalignment:
+
+- Missing column:
+  student_keyskill_map.score
+
+- Missing table:
+  student_analytics_summary
+
+4. Security / Visibility Conclusion
+- No evidence of role-visibility leakage
+- No indication of student accessing privileged/admin-only data
+
+5. System Risk Identified
+- Functional instability in student experience due to:
+  - schema drift
+  - incomplete deployment alignment
+
+----------------------------------------
+DECISION
+----------------------------------------
+
+- PR-05 is VALIDATED for:
+  - Authorization correctness
+  - Visibility safety
+
+- PR-05 must NOT introduce:
+  - Schema changes
+  - API changes
+
+----------------------------------------
+NEXT ACTION (PR-06)
+----------------------------------------
+
+Create a corrective PR to:
+
+1. Align schema and backend expectations
+2. Fix broken student self-access endpoints
+3. Validate fixes do not break existing working APIs
+
+----------------------------------------
+STATUS
+----------------------------------------
+
+PR-05 Status: PARTIALLY COMPLETE (Student Validation Done)
+Pending:
+- Admin-role validation (optional but recommended before closure)
+

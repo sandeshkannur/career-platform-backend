@@ -1,0 +1,42 @@
+PR-05 Role Visibility Validation
+Validation Scope
+
+In scope routers:
+1. recommendation_router
+2. analytics_router
+3. paid_analytics_router
+4. scorecard_router
+5. student_dashboard_router
+6. student_assessment_history_router
+7. student_results_history_router
+8. reports_router
+
+Why these are in scope:
+- Most likely to expose role-sensitive student data
+- Most likely to expose derived score/internal analytics
+- Highest chance of student vs counsellor vs admin response differences
+
+Out of scope for PR-05:
+- auth_router
+- admin_router
+- assessment_router
+- career_cluster_router
+- career_router
+- skill_router
+- keyskill_router
+- student_router
+- student_skill_map_router
+- student_keyskill_map_router
+- career_keyskill_map_router
+- questions_random_router
+- questions_localized_router
+- consent_router
+- content_router
+
+Reason out of scope:
+- Not primary role-visibility response comparison targets for this PR
+- Lower risk for student/internal analytics exposure
+- Better covered in other PRs if needed
+
+PR-05 rule:
+Validation first. No API or schema change unless an actual visibility defect is found.

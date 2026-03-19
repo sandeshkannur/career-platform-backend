@@ -1,0 +1,513 @@
+PR-08 Focused Search (routers/services/models/sql usage)
+Generated: 2026-03-17 23:19:31
+==================================================
+
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:77: # 3) explanation_translations: additive compatibility translation table
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:80: "explanation_translations",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:84: sa.Column("explanation_key", sa.String(length=120), nullable=False),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:89: sa.UniqueConstraint("content_version", "locale", "explanation_key", name="uq_et_v_l_k"),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:91: op.create_index("ix_et_locale", "explanation_translations", ["locale"])
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:92: op.create_index("ix_et_content_version", "explanation_translations", ["content_version"])
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:93: op.create_index("ix_et_explanation_key", "explanation_translations", ["explanation_key"])
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:95: # 4) facet_translations will be added in PR21 AFTER verifying your facet table name.
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:101: op.drop_index("ix_et_explanation_key", table_name="explanation_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:102: op.drop_index("ix_et_content_version", table_name="explanation_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:103: op.drop_index("ix_et_locale", table_name="explanation_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\870d6eef49cd_pr21_i18n_foundation_tables.py:104: op.drop_table("explanation_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:1: """PR21 facet translations table
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:22: # --- PR21: facet_translations (additive; FK to aq_facets.facet_id) ---
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:24: "facet_translations",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:26: sa.Column("facet_id", sa.String(length=120), nullable=False),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:28: sa.Column("facet_name", sa.Text(), nullable=False),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:30: sa.ForeignKeyConstraint(["facet_id"], ["aq_facets.facet_id"], ondelete="RESTRICT"),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:32: sa.UniqueConstraint("facet_id", "locale", name="uq_ft_facet_locale"),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:34: op.create_index("ix_ft_facet_id", "facet_translations", ["facet_id"])
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:35: op.create_index("ix_ft_locale", "facet_translations", ["locale"])
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:39: op.drop_index("ix_ft_locale", table_name="facet_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:40: op.drop_index("ix_ft_facet_id", table_name="facet_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\b1cd328d0d95_pr21_facet_translations_table.py:41: op.drop_table("facet_translations")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:42: # 2) associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:45: "associated_qualities_v",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:56: sa.UniqueConstraint("assessment_version", "aq_code", name="uq_associated_qualities_v_version_code"),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:58: op.create_index("ix_associated_qualities_v_id", "associated_qualities_v", ["id"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:59: op.create_index("ix_associated_qualities_v_assessment_version", "associated_qualities_v", ["assessment_version"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:60: op.create_index("ix_associated_qualities_v_aq_code", "associated_qualities_v", ["aq_code"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:63: # 3) aq_facets_v
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:66: "aq_facets_v",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:69: sa.Column("facet_code", sa.String(length=120), nullable=False),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:81: sa.UniqueConstraint("assessment_version", "facet_code", name="uq_aq_facets_v_version_facet"),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:84: ["associated_qualities_v.assessment_version", "associated_qualities_v.aq_code"],
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:85: name="fk_aq_facets_v_version_aq",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:89: op.create_index("ix_aq_facets_v_id", "aq_facets_v", ["id"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:90: op.create_index("ix_aq_facets_v_assessment_version", "aq_facets_v", ["assessment_version"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:91: op.create_index("ix_aq_facets_v_facet_code", "aq_facets_v", ["facet_code"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:92: op.create_index("ix_aq_facets_v_aq_code", "aq_facets_v", ["aq_code"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:95: # 4) question_facet_tags_v
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:98: "question_facet_tags_v",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:102: sa.Column("facet_code", sa.String(length=120), nullable=False),
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:110: "facet_code",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:111: name="uq_question_facet_tags_v_version_question_facet",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:114: ["assessment_version", "facet_code"],
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:115: ["aq_facets_v.assessment_version", "aq_facets_v.facet_code"],
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:116: name="fk_question_facet_tags_v_version_facet",
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:120: op.create_index("ix_question_facet_tags_v_id", "question_facet_tags_v", ["id"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:121: op.create_index("ix_question_facet_tags_v_assessment_version", "question_facet_tags_v", ["assessment_version"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:122: op.create_index("ix_question_facet_tags_v_question_code", "question_facet_tags_v", ["question_code"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:123: op.create_index("ix_question_facet_tags_v_facet_code", "question_facet_tags_v", ["facet_code"], unique=False)
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:127: op.drop_index("ix_question_facet_tags_v_facet_code", table_name="question_facet_tags_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:128: op.drop_index("ix_question_facet_tags_v_question_code", table_name="question_facet_tags_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:129: op.drop_index("ix_question_facet_tags_v_assessment_version", table_name="question_facet_tags_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:130: op.drop_index("ix_question_facet_tags_v_id", table_name="question_facet_tags_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:131: op.drop_table("question_facet_tags_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:133: op.drop_index("ix_aq_facets_v_aq_code", table_name="aq_facets_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:134: op.drop_index("ix_aq_facets_v_facet_code", table_name="aq_facets_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:135: op.drop_index("ix_aq_facets_v_assessment_version", table_name="aq_facets_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:136: op.drop_index("ix_aq_facets_v_id", table_name="aq_facets_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:137: op.drop_table("aq_facets_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:139: op.drop_index("ix_associated_qualities_v_aq_code", table_name="associated_qualities_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:140: op.drop_index("ix_associated_qualities_v_assessment_version", table_name="associated_qualities_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:141: op.drop_index("ix_associated_qualities_v_id", table_name="associated_qualities_v")
+C:\Users\sande\CareerPlatform-backend-repo\alembic\versions\ec55ebc40479_add_missing_assessment_and_versioned_.py:142: op.drop_table("associated_qualities_v")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1156: description="Comma-separated family list (default: AQ,FACET,SKILL,CAREER,CLUSTER)",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1178: summary="PR41: Coverage report for missing explanation keys per locale/version (baseline en)",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1193: select(ExplainabilityContent.explanation_key)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1206: select(ExplainabilityContent.explanation_key)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1236: w.writerow(["version", "baseline_locale", "target_locale", "missing_explanation_key"])
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1274: source, facet_id, aq_id
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1384: facet_id = (r.get("facet_id") or "").strip() or None
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1403: (question_id, skill_id, weight, source, facet_id, aq_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1405: (:question_id, :skill_id, :weight, :source, :facet_id, :aq_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1410: facet_id = EXCLUDED.facet_id,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1419: "facet_id": facet_id,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1620: - associated_qualities_v (versioned knowledge pack table)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1678: FROM associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1689: INSERT INTO associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1728: # PR1. UPLOAD AQ FACETS (AQ_FACET_TAXONOMY) - VERSIONED
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1732: "/upload-aq-facets",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1734: summary="Bulk upload AQ Facets via CSV",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1736: async def upload_aq_facets(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1743: assessment_version,facet_code,aq_code,name_en,name_hi,name_ta,description_en,description_hi,description_ta,status
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1747: - facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1752: - aq_facets_v (versioned knowledge pack table)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1755: - (assessment_version, aq_code) must exist in associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1759: - Unique key: (assessment_version, facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1786: "facet_code",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1810: facet_code = (row.get("facet_code") or "").strip()
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1811: original_facet_code = facet_code  # <-- MOVE HERE (this is the exact fix)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1813: # PR42: normalize FACET codes like FACET01 -> FACET_01
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1814: m = re.match(r"^(FACET)(\d{1,3})$", facet_code, flags=re.IGNORECASE)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1816: facet_code = f"{m.group(1).upper()}_{int(m.group(2)):02d}"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1820: facet_code, facet_applied = resolve_alias(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1822: entity_type="FACET",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1823: raw_value=facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1826: if facet_applied:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1828: f"Row {row_num}: facet_code '{original_facet_code}' normalized to '{facet_code}'"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1853: if not assessment_version or not facet_code or not aq_code or not name_en:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1857: # FK check (version-safe): AQ must exist in associated_qualities_v for same version
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1862: FROM associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1879: FROM aq_facets_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1880: WHERE assessment_version = :v AND facet_code = :fc
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1884: {"v": assessment_version, "fc": facet_code},
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1890: INSERT INTO aq_facets_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1891: (assessment_version, facet_code, aq_code, name_en, name_hi, name_ta,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1894: (:assessment_version, :facet_code, :aq_code, :name_en, :name_hi, :name_ta,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1896: ON CONFLICT (assessment_version, facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1911: "facet_code": facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1929: logger.info(f"upload-aq-facets(v): inserted={inserted}, updated={updated}, skipped={skipped}")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1940: # PR2. UPLOAD QUESTION ? AQ_FACET TAGGING (QUESTION_AQ_FACET_TAGGING)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1944: "/upload-question-facet-tags",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1946: summary="Bulk upload Question ? AQ Facet tags via CSV (versioned)",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1948: async def upload_question_facet_tags(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1955: assessment_version,question_code,facet_code,tag_weight
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1958: - Upsert into question_facet_tags_v using UNIQUE(assessment_version, question_code, facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1961: - facet must exist in aq_facets_v for that (assessment_version, facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1984: expected_fields = {"assessment_version", "question_code", "facet_code", "tag_weight"}
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:1999: facet_code = (row.get("facet_code") or "").strip()
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2000: original_facet_code = facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2002: # PR42 — deterministic normalization for AQ facet codes:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2004: normalized_facet_code = facet_code.strip().upper().replace(" ", "")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2006: m = re.match(r"^AQ_?(\d{1,2})_?F_?(\d{1,2})$", normalized_facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2010: normalized_facet_code = f"AQ{aq_num:02d}_F{f_num}"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2011: # else: leave as-is (it will be validated against aq_facets_v)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2014: facet_code, facet_applied = resolve_alias(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2016: entity_type="FACET",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2017: raw_value=normalized_facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2021: if normalized_facet_code != original_facet_code.upper().replace(" ", "") or facet_applied:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2023: f"Row {row_num}: facet_code '{original_facet_code}' ? '{facet_code}'"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2027: if not assessment_version or not question_code or not facet_code or not tag_weight_raw:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2047: # Validate facet exists (versioned facets table from PR1)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2048: facet_exists = db.execute(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2052: FROM aq_facets_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2054: AND facet_code = :f
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2058: {"v": assessment_version, "f": facet_code},
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2061: if not facet_exists:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2070: INSERT INTO question_facet_tags_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2071: (assessment_version, question_code, facet_code, tag_weight)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2074: ON CONFLICT (assessment_version, question_code, facet_code)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2080: {"v": assessment_version, "q": question_code, "f": facet_code, "w": tag_weight},
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2089: f"upload-question-facet-tags(v): inserted={inserted}, updated={updated}, skipped={skipped}"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2207: FROM associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2218: errors.append({"row": r["rownum"], "field": "aq_code", "message": "AQ not found for assessment_version in associated_qualities_v (active)"})
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2291: - Versioned + locale-aware upsert by (version, locale, explanation_key)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2313: required_cols = {"version", "locale", "explanation_key", "text"}
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2349: explanation_key = (row.get("explanation_key") or "").strip()
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2354: if not version or not locale or not explanation_key or not text_val:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2358: error="Missing one of required fields: version, locale, explanation_key, text"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2367: ExplainabilityContent.explanation_key == explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2379: explanation_key=explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2398: summary="PR42: Upload alias ? canonical mappings (AQ/FACET/SKILL) via CSV",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\admin.py:2447: allowed_types = {"AQ", "FACET", "SKILL"}
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:107: "facet_agg": [],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:236: JOIN question_facet_tags_v t
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:239: JOIN aq_facets_v f
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:241: AND f.facet_code=t.facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1303: # 4) Load facet tags (facet_id) for these questions
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1305: facet_rows = (
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1306: db.query(models.QuestionFacetTag)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1307: .filter(models.QuestionFacetTag.question_id.in_(question_ids))
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1311: facet_tags_by_qid: dict[int, list[str]] = {}
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1312: for r in facet_rows:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1313: facet_tags_by_qid.setdefault(r.question_id, []).append(r.facet_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\assessments.py:1356: "facet_tags": facet_tags_by_qid.get(q.id, []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:20: keys: Optional[str] = Query(None, description="Optional comma-separated explanation_key filter"),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:21: facet_keys: Optional[List[str]] = Query(None, description="Facet keys (repeatable and/or comma-separated)"),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:39: facet_keys=foo&facet_keys=bar,baz  -> ["foo","bar","baz"]
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:67: # Expand facet keys -> support both legacy numbered keys and future LABEL/DESC keys
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:68: for k in _split_mixed(facet_keys):
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:71: # Legacy (your current DB examples): FACET.CONFIDENCE.001
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:72: expanded_keys.append(f"FACET.{t}.001")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:74: # Future-friendly: FACET.CONFIDENCE.LABEL / FACET.CONFIDENCE.DESC
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:75: expanded_keys.append(f"FACET.{t}.LABEL")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:76: expanded_keys.append(f"FACET.{t}.DESC")
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:109: stmt = stmt.where(ExplainabilityContent.explanation_key.in_(key_list))
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:124: merged[r.explanation_key] = r.text
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:127: merged[r.explanation_key] = r.text
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\content.py:130: ExplainabilityContentItem(explanation_key=k, text=v)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:10: from app.services.explanations import build_full_explanation
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:59: - Natural-language explanations
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:81: # 3) Build explanations (clusters + careers)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:82: explanation_data = build_full_explanation(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:93: clusters=explanation_data["clusters"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:94: careers=explanation_data["careers"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:129: # 2) Build explanations (clusters + careers) — computed as before
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:130: explanation_data = build_full_explanation(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:140: for c in explanation_data.get("clusters", []) or []:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:147: explanation=c["explanation"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:152: for c in explanation_data.get("careers", []) or []:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:159: explanation=c["explanation"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:185: - This endpoint returns explanation KEYS (not final prose).
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:192: explanation_data = build_full_explanation(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:231: # --- Cluster insights (take top 3 from computed explanation list) ---
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:233: for c in (explanation_data.get("clusters", []) or [])[:3]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:241: # --- Career insights (take top 3 from computed explanation list) ---
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:243: for c in (explanation_data.get("careers", []) or [])[:3]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:251: # MVP evidence: we only return empty arrays until we wire result-based facets/AQ keys
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\paid_analytics.py:252: "evidence": {"facet_keys": [], "aq_keys": []},
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:8: from app.services.explanations import resolve_cms_text
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:15: def _load_question_facets(db: Session, question_ids: list[int], assessment_version: str, locale: str) -> dict[int, list[dict]]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:17: Returns: question_id -> list of facet display names
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:19: Fallback chain for each facet:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:20: 1) facet_translations for requested locale
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:21: 2) facet_translations for 'en'
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:22: 3) aq_facets.facet_name
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:23: 4) facet_id (last resort)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:31: SELECT qft.question_id, qft.facet_id
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:32: FROM question_facet_tags qft
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:34: ORDER BY qft.question_id, qft.facet_id
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:44: facet_ids: set[str] = set()
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:47: facet_ids.add(fid)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:50: facet_name_rows = db.execute(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:54: af.facet_id,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:56: COALESCE(ft_req.facet_name, ft_en.facet_name, af.facet_name, af.facet_id) AS display_name
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:57: FROM aq_facets af
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:58: LEFT JOIN facet_translations ft_req
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:59: ON ft_req.facet_id = af.facet_id AND ft_req.locale = :loc
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:60: LEFT JOIN facet_translations ft_en
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:61: ON ft_en.facet_id = af.facet_id AND ft_en.locale = 'en'
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:62: WHERE af.facet_id = ANY(:fids)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:65: {"loc": locale, "fids": list(facet_ids)},
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:70: for (fid, aq_id, name_en) in facet_name_rows:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:71: # Try CMS (explainability_content) using explanation_key == facet_code (e.g., AQ06_F1)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:76: explanation_key=fid,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:82: facet_name = name_en
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:83: facet_name_used = "en"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:85: facet_name = cms_text
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:86: facet_name_used = locale if (facet_name and facet_name != name_en) else "en"
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:89: "facet_code": fid,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:90: "facet_name_en": name_en,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:91: "facet_name": facet_name,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:92: "facet_name_used": facet_name_used,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:98: qid_to_tags[qid] = [fid_to_payload.get(fid, {"facet_code": fid, "facet_name_en": None, "facet_name": None, "facet_name_used": "en", "aq_code": None}) for fid in fids]
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:138: qid_to_facets = _load_question_facets(db, question_ids, assessment_version, requested_lang)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:155: facet_tags=qid_to_facets.get(q.id, []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:192: qid_to_facets = _load_question_facets(db, question_ids, "v1", requested_lang)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:214: "facet_tags": qid_to_facets.get(q.id, []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:259: qid_to_facets = _load_question_facets(db, [q.id], q.assessment_version, requested_lang)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\questions.py:274: "facet_tags": qid_to_facets.get(q.id, []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:22: from app.services.explanations import build_full_explanation
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:67: # --- Explanation objects (clusters/careers) ---
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:68: explanation_data = build_full_explanation(db, student_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:95: "clusters": explanation_data.get("clusters", []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:96: "careers": explanation_data.get("careers", []),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:101: "top_facets": pr6_blocks["top_facets"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:103: "facet_evidence_blocks": pr6_blocks["facet_evidence_blocks"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:132: PR15: students must not see numbers anywhere (including inside explanation text).
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:175: # If explanation objects come through, fallback to string-safe conversion
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:183: "explanation": _strip_numbers(c.get("explanation")),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:200: "explanation": _strip_numbers(cr.get("explanation")),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:208: for item in (evidence.get("facet_evidence") or []):
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:217: for block_key in ["top_facets", "top_aqs", "facet_evidence_blocks"]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:248: "top_facets": [],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:250: "facet_evidence_blocks": [],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:253: facet_evidence = evidence.get("facet_evidence") or []
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:256: # 1) Top facets: reuse PR5 facet_evidence ordering (already meaningful)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:257: top_facets = []
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:258: for item in facet_evidence[:3]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:259: top_facets.append(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:260: schemas.ScorecardFacetExplainBlock(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:261: facet_code=item.get("facet_code"),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:262: facet_name_en=item.get("facet_name_en"),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:266: explanation_key=f"facet.{item.get('facet_code')}.summary",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:277: facet_codes=aq_item.get("facet_codes") or [],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:279: explanation_key=f"aq.{aq_item.get('aq_code')}.summary",
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:283: # 3) Facet evidence blocks (traceability only)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:284: facet_evidence_blocks = []
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:285: for item in facet_evidence[:3]:
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:286: facet_evidence_blocks.append(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:287: schemas.ScorecardFacetEvidenceBlock(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:288: facet_code=item.get("facet_code"),
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:294: "top_facets": top_facets,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:296: "facet_evidence_blocks": facet_evidence_blocks,
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:355: top_facets=blocks["top_facets"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:357: facet_evidence_blocks=blocks["facet_evidence_blocks"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:368: # Explanations (clusters + careers)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:369: explanation_data = build_full_explanation(db, student_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:396: clusters=explanation_data["clusters"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:397: careers=explanation_data["careers"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:402: top_facets=blocks["top_facets"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\scorecard.py:404: facet_evidence_blocks=blocks["facet_evidence_blocks"],
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\student_results_history.py:130: facet_keys: List[str] = []
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\student_results_history.py:138: facet_keys = [x["facet_code"] for x in (ev.get("facet_evidence") or [])[:5] if x.get("facet_code")]
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\student_results_history.py:141: facet_keys = []
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\student_results_history.py:145: schemas.FacetInsightsBlock(
+C:\Users\sande\CareerPlatform-backend-repo\app\routers\student_results_history.py:146: facet_keys=facet_keys,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:8: FACET_EVIDENCE_SQL = text("""
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:24: qft.facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:26: JOIN question_facet_tags_v qft
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:30: facet_meta AS (
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:34: t.facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:35: f.name_en AS facet_name_en,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:40: JOIN aq_facets_v f
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:42: AND f.facet_code = t.facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:43: JOIN associated_qualities_v aq
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:48: facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:49: facet_name_en,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:54: FROM facet_meta
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:55: GROUP BY facet_code, facet_name_en, aq_code, aq_name_en
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:56: ORDER BY evidence_count DESC, aq_code, facet_code;
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:76: qft.facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:78: JOIN question_facet_tags_v qft
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:82: facet_meta AS (
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:87: t.facet_code,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:90: JOIN aq_facets_v f
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:92: AND f.facet_code = t.facet_code
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:93: JOIN associated_qualities_v aq
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:101: ARRAY_AGG(DISTINCT facet_code ORDER BY facet_code) AS facet_codes,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:103: FROM facet_meta
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:113: assessment_responses -> questions -> question_facet_tags_v -> aq_facets_v -> associated_qualities_v
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:116: facet_rows = db.execute(FACET_EVIDENCE_SQL, {"assessment_id": assessment_id}).mappings().all()
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:119: facet_evidence = [
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:121: "facet_code": r["facet_code"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:122: "facet_name_en": r["facet_name_en"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:128: for r in facet_rows
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:136: "facet_codes": list(r["facet_codes"] or []),
+C:\Users\sande\CareerPlatform-backend-repo\app\services\evidence.py:143: "facet_evidence": facet_evidence,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:1: # backend/app/services/explanations.py
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:34: def _is_tier_narrative_key(explanation_key: str) -> bool:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:37: if not explanation_key:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:39: return explanation_key.startswith("paid.career.") or explanation_key.startswith("paid.cluster.")
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:46: explanation_key: str,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:51: Resolve CMS text from explainability_content by (version, locale, explanation_key).
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:67: ExplainabilityContent.explanation_key == explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:79: ExplainabilityContent.explanation_key == explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:90: explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:92: return f"[missing:{explanation_key}]"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:100: explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:102: return f"[missing:{explanation_key}]"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:106: _is_tier_narrative_key(explanation_key)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:113: explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:115: return f"[unsafe:{explanation_key}]"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:122: explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:124: return f"[unsafe:{explanation_key}]"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:131: explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:150: # Template-based explanation builders
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:175: PR54: Choose explanation key based on presence of top keyskills.
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:180: explanation_key = "paid.cluster.with_keyskills"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:186: explanation_key = "paid.cluster.no_keyskills"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:192: "explanation_key": explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:200: PR54: Choose explanation key based on fit_band.
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:202: explanation_key = f"paid.career.{fit_band}"
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:212: "explanation_key": explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:219: # Full explanation builder – used by /paid-analytics
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:222: def build_full_explanation(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:236: - explanation strings
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:263: # CLUSTER EXPLANATIONS
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:333: "explanation": explain_cluster(cluster, score, contributing, band_breakdown),
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:337: cluster_item["explanation"]["text"] = resolve_cms_text(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:341: explanation_key=cluster_item["explanation"]["explanation_key"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:345: cluster_item["explanation"]["text"] = render_text_with_slots(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:346: cluster_item["explanation"]["text"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:347: cluster_item["explanation"].get("slots", {}),
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:352: # CAREER EXPLANATIONS
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:387: "explanation": explain_career(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:396: career_item["explanation"]["text"] = resolve_cms_text(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:400: explanation_key=career_item["explanation"]["explanation_key"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:403: career_item["explanation"]["text"] = render_text_with_slots(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:404: career_item["explanation"]["text"],
+C:\Users\sande\CareerPlatform-backend-repo\app\services\explanations.py:405: career_item["explanation"].get("slots", {}),
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:19: AQFacet,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:25: QuestionFacetTag,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:77: aq_facets_count = db.query(AQFacet).count()
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:79: qft_count = db.execute(text("SELECT COUNT(*) FROM question_facet_tags_v")).scalar() or 0
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:82: add_count("aq_facets", aq_facets_count)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:84: add_count("question_facet_tags", qft_count)  # keep label stable for clients
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:219: code="question_facet_tags.missing",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:221: message="No Question ? Facet tags found. AQ/Facet explainability will be limited until facet tagging is uploaded.",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:230: # 1) AQs with zero facets (should be rare if AQ facets ingestion is complete)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:232: aqs_without_facets_count = (
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:238: LEFT JOIN aq_facets f ON f.aq_id = aq.aq_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:239: WHERE f.facet_id IS NULL
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:246: if int(aqs_without_facets_count) > 0:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:253: LEFT JOIN aq_facets f ON f.aq_id = aq.aq_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:254: WHERE f.facet_id IS NULL
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:265: code="aqs.missing_facets",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:267: message="Some associated qualities (AQs) have no facets. Explainability may be less specific for these AQs until facets are added.",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:268: sample={"examples": [dict(r) for r in examples], "count": int(aqs_without_facets_count)},
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:274: # 2) AQs with facets but no questions (requires facet tagging to be meaningful)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:275: # If facet tagging is missing, we report an informational note instead of warning.
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:280: code="aqs.facets_without_questions.check_skipped",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:282: message="Facet tagging is not present yet, so AQ ? Facet ? Question coverage cannot be evaluated. Once question facet tags are uploaded, this check will become active.",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:287: aqs_facets_no_questions_count = (
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:293: JOIN aq_facets f ON f.aq_id = aq.aq_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:294: LEFT JOIN question_facet_tags_v qft ON qft.facet_code = f.facet_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:295: WHERE qft.facet_id IS NULL
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:302: if int(aqs_facets_no_questions_count) > 0:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:307: SELECT aq.aq_id, aq.aq_name, f.facet_id, f.facet_name
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:309: JOIN aq_facets f ON f.aq_id = aq.aq_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:310: LEFT JOIN question_facet_tags_v qft ON qft.facet_id = f.facet_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:311: WHERE qft.facet_id IS NULL
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:312: ORDER BY aq.aq_id, f.facet_id
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:323: code="aq_facets.unused_by_questions",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:325: message="Some AQ facets are not linked to any question. These facets may not appear in explainability until question tagging is added.",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:326: sample={"examples": [dict(r) for r in examples], "count": int(aqs_facets_no_questions_count)},
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:334: # This is meaningful even before facet tagging exists.
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1026: families = required_families or ["AQ", "FACET", "SKILL", "CAREER", "CLUSTER"]
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1029: # 1) Canonical uppercase dotted taxonomy: AQ.INTRO.001, FACET.CONFIDENCE.001, CAREER.SOFTWARE.OVERVIEW
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1030: canonical_re = re.compile(r"^(AQ|FACET|SKILL|CAREER|CLUSTER)(\.[A-Z0-9_]+)+$")
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1059: SELECT version, locale, explanation_key
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1062: ORDER BY version, locale, explanation_key
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1076: SELECT version, locale, explanation_key, COUNT(*) AS cnt
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1079: GROUP BY version, locale, explanation_key
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1081: ORDER BY cnt DESC, version, locale, explanation_key
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1096: message="Duplicate explanation_key rows detected within the same (version, locale). This should not happen if the UNIQUE constraint is healthy.",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1107: key = (r.get("explanation_key") or "").strip()
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1109: invalid_format_examples.append({"explanation_key": key})
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1134: unknown_family_examples.append({"explanation_key": key, "family": fam})
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1146: invalid_format_examples.append({"explanation_key": key})
+C:\Users\sande\CareerPlatform-backend-repo\app\services\knowledge_pack_validation.py:1154: "Some explanation_key values do not match expected formats. "
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:28: _FORBIDDEN_TOKENS = ("career_id", "facet_id", "aq_id", "score", "weight", "%")
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:192: explanation_key: str,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:205: models.ExplainabilityContent.explanation_key == explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:219: models.ExplainabilityContent.explanation_key == explanation_key,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:227: return "Explanation coming soon."
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:337: # facets/AQs/skills without exposing internals to students.
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:349: explanation_key=k,
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:350: explanation_text=resolve_explainability_text(
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:351: db, version=cms_version, locale=locale, explanation_key=k
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:419: "facet_id",
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:446: if b.explanation_key:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:447: check_text(f"section[{si}].block[{bi}].explanation_key", b.explanation_key)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:448: if b.explanation_text:
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:449: check_text(f"section[{si}].block[{bi}].explanation_text", b.explanation_text)
+C:\Users\sande\CareerPlatform-backend-repo\app\services\report_builder.py:495: text = b.text or b.explanation_text or ""
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:149: - "FACET" (Facet codes)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:325: class FacetTranslation(Base):
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:326: __tablename__ = "facet_translations"
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:329: facet_id = Column(String(120), ForeignKey("aq_facets.facet_id", ondelete="RESTRICT"), nullable=False, index=True)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:332: facet_name = Column(Text, nullable=False)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:336: class ExplanationTranslation(Base):
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:337: __tablename__ = "explanation_translations"
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:343: explanation_key = Column(String(120), nullable=False, index=True)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:630: # Associated Quality (AQ) and AQFacet
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:639: facets = relationship("AQFacet", back_populates="aq", cascade="all, delete-orphan")
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:642: class AQFacet(Base):
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:643: __tablename__ = "aq_facets"
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:645: facet_id = Column(String, primary_key=True, index=True)  # e.g., "AQ01_F1"
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:647: facet_name = Column(String, nullable=False)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:649: aq = relationship("AssociatedQuality", back_populates="facets")
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:653: Index("idx_aq_facets_aq_id", AQFacet.aq_id)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:656: # PR2: Question ? AQFacet tagging
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:659: class QuestionFacetTag(Base):
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:661: QuestionFacetTag — tags a question to one or more AQ facets.
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:664: __tablename__ = "question_facet_tags"
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:671: # FK -> aq_facets.facet_id (STRING)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:672: facet_id = Column(String, ForeignKey("aq_facets.facet_id", ondelete="RESTRICT"), nullable=False, index=True)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:677: "facet_id",
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:678: name="uq_question_facet_tags_question_facet",
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:683: question = relationship("Question", backref="facet_tags")
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:684: facet = relationship("AQFacet", backref="question_tags")
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:714: facet_id = Column(String(50), nullable=True)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:744: explanation_key = Column(String(120), nullable=False, index=True)
+C:\Users\sande\CareerPlatform-backend-repo\app\models.py:756: UniqueConstraint("version", "locale", "explanation_key", name="uq_explainability_content_v_l_k"),
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_assessment_questions.py:25: facet_tags: List[str] = Field(
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:71: # PR2: QUESTION ? FACET TAG UPLOAD SCHEMAS
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:74: class QuestionFacetTagUploadRow(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:76: facet_id: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:282: class ExplanationBlock(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:285: - explanation_key: stable taxonomy key, resolved via explainability_content(version, locale, key)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:289: explanation_key: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:294: # PAID ANALYTICS SCHEMAS - NEW (Weighted + Explanations + Bands)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:308: explanation: ExplanationBlock
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:317: explanation: ExplanationBlock
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:338: explanation: ExplanationBlock
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:346: explanation: ExplanationBlock
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:449: class FacetEvidenceItem(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:450: facet_code: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:451: facet_name_en: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:462: facet_codes: List[str] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:467: facet_evidence: List[FacetEvidenceItem] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:472: # PR6: Student-safe AQ/Facet blocks (computed-on-read from PR5 evidence)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:475: class ScorecardFacetExplainBlock(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:476: facet_code: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:477: facet_name_en: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:483: explanation_key: Optional[str] = None
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:489: facet_codes: List[str] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:491: explanation_key: Optional[str] = None
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:494: class ScorecardFacetEvidenceBlock(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:495: facet_code: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:517: explanation: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:525: explanation: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:544: top_facets: List["ScorecardFacetExplainBlock"] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:546: facet_evidence_blocks: List["ScorecardFacetEvidenceBlock"] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:569: explanation: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:576: explanation: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:580: class StudentFacetEvidenceItem(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:581: facet_code: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:582: facet_name_en: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:591: facet_codes: List[str] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:596: facet_evidence: List[StudentFacetEvidenceItem] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:612: top_facets: List["ScorecardFacetExplainBlock"] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:614: facet_evidence_blocks: List["ScorecardFacetEvidenceBlock"] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:636: explanation_key: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:754: class FacetTagOut(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:755: facet_code: str
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:756: facet_name_en: Optional[str] = None
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:764: facet_tags: List[FacetTagOut] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:785: facet_tags: List[FacetTagOut] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:869: class FacetInsightsBlock(BaseModel):
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:870: block_type: Literal["FACET_INSIGHTS"] = "FACET_INSIGHTS"
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:871: title_key: Optional[str] = "results.blocks.facet_insights.title"
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:876: facet_keys: List[str] = Field(default_factory=list)
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:899: FacetInsightsBlock,
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:1012: explanation_key: Optional[str] = None
+C:\Users\sande\CareerPlatform-backend-repo\app\schemas_legacy.py:1013: explanation_text: Optional[str] = None
