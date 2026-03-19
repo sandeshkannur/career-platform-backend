@@ -1,0 +1,124 @@
+assessment_version,facet_code,aq_code,name_en,name_hi,name_ta,description_en,description_hi,description_ta,status
+v1,AQ01_F1,AQ_01,Exploratory Openness,,,,,,active
+v1,AQ01_F2,AQ_01,Question-Seeking Habit,,,,,,active
+v1,AQ01_F3,AQ_01,Deep-Dive Persistence,,,,,,active
+v1,AQ01_F4,AQ_01,Self-Initiated Learning,,,,,,active
+v1,AQ02_F1,AQ_02,Problem Clarification,,,,,,active
+v1,AQ02_F2,AQ_02,Logical Structuring,,,,,,active
+v1,AQ02_F3,AQ_02,Perspective Expansion,,,,,,active
+v1,AQ02_F4,AQ_02,Precision & Specificity,,,,,,active
+v1,AQ03_F1,AQ_03,Pattern Recognition,,,,,,active
+v1,AQ03_F2,AQ_03,Cause?Effect Analysis,,,,,,active
+v1,AQ03_F3,AQ_03,Comparison & Evaluation,,,,,,active
+v1,AQ03_F4,AQ_03,Evidence-Based Conclusion,,,,,,active
+v1,AQ03_F5,AQ_03,Error Detection & Correction,,,,,,active
+v1,AQ04_F1,AQ_04,Idea Combination,,,,,,active
+v1,AQ04_F2,AQ_04,Original Problem Approach,,,,,,active
+v1,AQ04_F3,AQ_04,Conceptual Flexibility,,,,,,active
+v1,AQ04_F4,AQ_04,Idea Expansion,,,,,,active
+v1,AQ04_F5,AQ_04,Cross-Context Application,,,,,,active
+v1,AQ05_F1,AQ_05,Feedback Integration,,,,,,active
+v1,AQ05_F2,AQ_05,Adaptive Strategy Shift,,,,,,active
+v1,AQ05_F3,AQ_05,Error-Based Learning,,,,,,active
+v1,AQ05_F4,AQ_05,Openness to New Methods,,,,,,active
+v1,AQ05_F5,AQ_05,Self-Monitoring Progress,,,,,,active
+v1,AQ06_F1,AQ_06,Sustained Attention,,,,,,active
+v1,AQ06_F2,AQ_06,Distraction Management,,,,,,active
+v1,AQ06_F3,AQ_06,Task Engagement Depth,,,,,,active
+v1,AQ06_F4,AQ_06,Attention Switching Control,,,,,,active
+v1,AQ06_F5,AQ_06,Self-Awareness of Attention,,,,,,active
+v1,AQ07_F1,AQ_07,Emotional Awareness,,,,,,active
+v1,AQ07_F2,AQ_07,Impulse Modulation,,,,,,active
+v1,AQ07_F3,AQ_07,Emotional Recovery,,,,,,active
+v1,AQ07_F4,AQ_07,Stress Tolerance,,,,,,active
+v1,AQ07_F5,AQ_07,Emotion?Action Alignment,,,,,,active
+v1,AQ08_F1,AQ_08,Setback Acceptance,,,,,,active
+v1,AQ08_F2,AQ_08,Effort Renewal,,,,,,active
+v1,AQ08_F3,AQ_08,Challenge Appraisal,,,,,,active
+v1,AQ08_F4,AQ_08,Coping Strategy Use,,,,,,active
+v1,AQ08_F5,AQ_08,Persistence Under Difficulty,,,,,,active
+v1,AQ09_F1,AQ_09,Task Follow-Through,,,,,,active
+v1,AQ09_F2,AQ_09,Routine Adherence,,,,,,active
+v1,AQ09_F3,AQ_09,Effort Consistency,,,,,,active
+v1,AQ09_F4,AQ_09,Delay Tolerance,,,,,,active
+v1,AQ09_F5,AQ_09,Self-Directed Accountability,,,,,,active
+v1,AQ10_F1,AQ_10,Strength Awareness,,,,,,active
+v1,AQ10_F2,AQ_10,Limitation Awareness,,,,,,active
+v1,AQ10_F3,AQ_10,Behaviour?Outcome Insight,,,,,,active
+v1,AQ10_F4,AQ_10,Reflective Adjustment,,,,,,active
+v1,AQ10_F5,AQ_10,Internal Feedback Sensitivity,,,,,,active
+v1,AQ11_F1,AQ_11,Idea Articulation,,,,,,active
+v1,AQ11_F2,AQ_11,Thought Structuring,,,,,,active
+v1,AQ11_F3,AQ_11,Context-Appropriate Expression,,,,,,active
+v1,AQ11_F4,AQ_11,Listening for Understanding,,,,,,active
+v1,AQ11_F5,AQ_11,Clarification Seeking,,,,,,active
+v1,AQ12_F1,AQ_12,Cooperative Contribution,,,,,,active
+v1,AQ12_F2,AQ_12,Role Flexibility,,,,,,active
+v1,AQ12_F3,AQ_12,Shared Goal Alignment,,,,,,active
+v1,AQ12_F4,AQ_12,Constructive Interaction,,,,,,active
+v1,AQ12_F5,AQ_12,Supportive Responsiveness,,,,,,active
+v1,AQ13_F1,AQ_13,Emotional Cue Recognition,,,,,,active
+v1,AQ13_F2,AQ_13,Perspective Taking,,,,,,active
+v1,AQ13_F3,AQ_13,Social Context Awareness,,,,,,active
+v1,AQ13_F4,AQ_13,Impact Awareness,,,,,,active
+v1,AQ13_F5,AQ_13,Responsiveness to Social Feedback,,,,,,active
+v1,AQ14_F1,AQ_14,Initiative Taking,,,,,,active
+v1,AQ14_F2,AQ_14,Responsibility Acceptance,,,,,,active
+v1,AQ14_F3,AQ_14,Direction Setting,,,,,,active
+v1,AQ14_F4,AQ_14,Decision Readiness,,,,,,active
+v1,AQ14_F5,AQ_14,Supportive Leadership,,,,,,active
+v1,AQ15_F1,AQ_15,Fairness Awareness,,,,,,active
+v1,AQ15_F2,AQ_15,Responsibility for Impact,,,,,,active
+v1,AQ15_F3,AQ_15,Integrity in Choices,,,,,,active
+v1,AQ15_F4,AQ_15,Ethical Reflection,,,,,,active
+v1,AQ15_F5,AQ_15,Accountability Without Blame,,,,,,active
+v1,AQ16_F1,AQ_16,Option Evaluation,,,,,,active
+v1,AQ16_F2,AQ_16,Consequence Awareness,,,,,,active
+v1,AQ16_F3,AQ_16,Evidence Use in Decisions,,,,,,active
+v1,AQ16_F4,AQ_16,Uncertainty Handling,,,,,,active
+v1,AQ16_F5,AQ_16,Reflective Review of Decisions,,,,,,active
+v1,AQ17_F1,AQ_17,Change Acceptance,,,,,,active
+v1,AQ17_F2,AQ_17,Behavioural Adjustment,,,,,,active
+v1,AQ17_F3,AQ_17,Flexibility of Plans,,,,,,active
+v1,AQ17_F4,AQ_17,Openness to New Situations,,,,,,active
+v1,AQ17_F5,AQ_17,Recovery from Change Disruption,,,,,,active
+v1,AQ18_F1,AQ_18,Pressure Tolerance,,,,,,active
+v1,AQ18_F2,AQ_18,Calm Maintenance,,,,,,active
+v1,AQ18_F3,AQ_18,Stress Impact Awareness,,,,,,active
+v1,AQ18_F4,AQ_18,Coping Response Selection,,,,,,active
+v1,AQ18_F5,AQ_18,Task Focus Under Stress,,,,,,active
+v1,AQ19_F1,AQ_19,Goal Setting Tendency,,,,,,active
+v1,AQ19_F2,AQ_19,Directional Persistence,,,,,,active
+v1,AQ19_F3,AQ_19,Purpose Awareness,,,,,,active
+v1,AQ19_F4,AQ_19,Self-Driven Effort,,,,,,active
+v1,AQ19_F5,AQ_19,Goal Review & Adjustment,,,,,,active
+v1,AQ20_F1,AQ_20,Values Identification,,,,,,active
+v1,AQ20_F2,AQ_20,Action?Value Consistency,,,,,,active
+v1,AQ20_F3,AQ_20,Values-Based Choice Making,,,,,,active
+v1,AQ20_F4,AQ_20,Values Reflection,,,,,,active
+v1,AQ20_F5,AQ_20,Integrity of Alignment,,,,,,active
+v1,AQ21_F1,AQ_21,Risk Identification,,,,,,active
+v1,AQ21_F2,AQ_21,Cautious Decision Framing,,,,,,active
+v1,AQ21_F3,AQ_21,Balanced Risk?Benefit View,,,,,,active
+v1,AQ21_F4,AQ_21,Preventive Thinking,,,,,,active
+v1,AQ21_F5,AQ_21,Situational Caution Adjustment,,,,,,active
+v1,AQ22_F1,AQ_22,Task Ownership,,,,,,active
+v1,AQ22_F2,AQ_22,Commitment Follow-Through,,,,,,active
+v1,AQ22_F3,AQ_22,Outcome Accountability,,,,,,active
+v1,AQ22_F4,AQ_22,Reliability Perception,,,,,,active
+v1,AQ22_F5,AQ_22,Boundary-Aware Ownership,,,,,,active
+v1,AQ23_F1,AQ_23,Autonomous Task Handling,,,,,,active
+v1,AQ23_F2,AQ_23,Self-Initiated Problem Solving,,,,,,active
+v1,AQ23_F3,AQ_23,Judgement Confidence,,,,,,active
+v1,AQ23_F4,AQ_23,Help-Seeking Discernment,,,,,,active
+v1,AQ23_F5,AQ_23,Responsibility for Own Work,,,,,,active
+v1,AQ24_F1,AQ_24,Long-Term Commitment,,,,,,active
+v1,AQ24_F2,AQ_24,Sustained Motivation,,,,,,active
+v1,AQ24_F3,AQ_24,Effort Endurance,,,,,,active
+v1,AQ24_F4,AQ_24,Delayed Reward Tolerance,,,,,,active
+v1,AQ24_F5,AQ_24,Adaptive Persistence,,,,,,active
+v1,AQ25_F1,AQ_25,Self-Exploration Interest,,,,,,active
+v1,AQ25_F2,AQ_25,Future Possibility Openness,,,,,,active
+v1,AQ25_F3,AQ_25,Information-Seeking About Paths,,,,,,active
+v1,AQ25_F4,AQ_25,Experimentation Willingness,,,,,,active
+v1,AQ25_F5,AQ_25,Comfort With Open-Ended Futures,,,,,,active
