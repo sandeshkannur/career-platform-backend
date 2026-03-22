@@ -156,7 +156,9 @@ def get_student_dashboard(
                     models.StudentSkillScore.skill_id,
                     models.StudentSkillScore.assessment_id,
                     models.StudentSkillScore.scaled_0_100,
+                    models.Skill.name.label("skill_name"),
                 )
+                .join(models.Skill, models.Skill.id == models.StudentSkillScore.skill_id, isouter=True)
                 .filter(models.StudentSkillScore.assessment_id == last_assessment.id)
                 .filter(models.StudentSkillScore.scoring_config_version == scoring_config_version)
                 .order_by(desc(models.StudentSkillScore.scaled_0_100), models.StudentSkillScore.skill_id)
@@ -167,6 +169,7 @@ def get_student_dashboard(
             top_skills = [
                 schemas.StudentDashboardTopSkill(
                     skill_id=s.skill_id,
+                    skill_name=getattr(s, "skill_name", None),
                     scaled_0_100=s.scaled_0_100,
                     tier=reverse_tier(s.scaled_0_100) if s.scaled_0_100 is not None else None,
                     assessment_id=s.assessment_id,

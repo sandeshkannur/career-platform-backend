@@ -804,6 +804,7 @@ class StudentDashboardAssessmentKPIs(BaseModel):
 
 class StudentDashboardTopSkill(BaseModel):
     skill_id: int
+    skill_name: Optional[str] = None
     scaled_0_100: Optional[float] = None
     tier: Optional[str] = None
     assessment_id: int
