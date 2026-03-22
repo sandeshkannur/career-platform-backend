@@ -73,10 +73,10 @@ jobs:
               "docker run -d --name career-backend --restart unless-stopped -p 8000:8000 --env-file /home/ec2-user/career-backend.env '"$IMAGE_URI"'",
 
               "echo ===== Waiting for container startup =====",
-              "sleep 30",
+              "sleep 60",
 
               "echo ===== Health check =====",
-              "curl -f http://localhost:8000/health"
+              "curl --retry 5 --retry-delay 10 -f http://localhost:8000/health"
             ]' \
             --region "${{ secrets.AWS_REGION }}" \
             --query "Command.CommandId" \
