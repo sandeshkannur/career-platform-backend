@@ -73,7 +73,7 @@ jobs:
               "docker run -d --name career-backend --restart unless-stopped -p 8000:8000 --env-file /home/ec2-user/career-backend.env '"$IMAGE_URI"'",
 
               "echo ===== Waiting for container startup =====",
-              "sleep 10",
+              "sleep 30",
 
               "echo ===== Health check =====",
               "curl -f http://localhost:8000/health"
@@ -84,7 +84,7 @@ jobs:
 
           echo "SSM Command ID: $COMMAND_ID"
 
-          aws ssm wait command-executed \
+          aws ssm wait command-executed --cli-read-timeout 300 \
             --command-id "$COMMAND_ID" \
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
             --region "${{ secrets.AWS_REGION }}"
