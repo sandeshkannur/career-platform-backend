@@ -77,5 +77,6 @@ def get_my_session(
         is_minor=user.is_minor,
         guardian_email=getattr(user, "guardian_email", None),
         student_profile=student_profile,
+        tier=getattr(user, "tier", "free"),
         message="Session active",
     )
