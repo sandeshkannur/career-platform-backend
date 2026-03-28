@@ -216,9 +216,9 @@ def _enforce_scale_on_persisted_responses(db: Session, assessment_id: int) -> No
     # If we backfilled any rows, persist it (idempotent)
     db.commit()
 
-def _sample_75_questions_v1(db: Session) -> List[Dict]:
+def _sample_questions_v1(db: Session) -> List[Dict]:
     """
-    Returns 75 questions (3 per AQ) for assessment_version='v1'.
+    Returns 50 questions (2 per AQ) for assessment_version='v1'.
 
     Shape:
       [{"question_id": int, "question_code": str, "aq_code": str}, ...]
@@ -242,7 +242,7 @@ def _sample_75_questions_v1(db: Session) -> List[Dict]:
               WHERE q.assessment_version='v1'
             ),
             pick AS (
-              SELECT * FROM pool WHERE rn <= 3
+              SELECT * FROM pool WHERE rn <= 2
             )
             SELECT question_id, question_code, aq_code
             FROM pick
@@ -253,10 +253,10 @@ def _sample_75_questions_v1(db: Session) -> List[Dict]:
 
     picked = [{"question_id": int(r[0]), "question_code": str(r[1]), "aq_code": str(r[2])} for r in rows]
 
-    if len(picked) != 75:
+    if len(picked) != 50:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Sampler failed: expected 75 questions, got {len(picked)}",
+            detail=f"Sampler failed: expected 50 questions, got {len(picked)}",
         )
 
     return picked
@@ -492,7 +492,7 @@ def create_assessment(
     )
 
     # 3) Pick + persist 75 AQ-balanced questions
-    picked = _sample_75_questions_v1(db=db)
+    picked = _sample_questions_v1(db=db)
     _persist_assessment_questions(
         db=db,
         assessment_id=assessment.id,
