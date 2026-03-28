@@ -104,7 +104,7 @@ def _summarize_top_careers(recommended_careers: Any, limit: int = 5) -> Optional
     return [_normalize_career_item(recommended_careers)]
 
 
-def _build_blocks_for_result(top_careers: list, *, db: Session = None, assessment_id: Optional[int] = None) -> list:
+def _build_blocks_for_result(top_careers: list, *, db: Session = None, assessment_id: Optional[int] = None, career_limit: int = 3) -> list:
 
     """
     Build extensible result blocks.
@@ -117,7 +117,7 @@ def _build_blocks_for_result(top_careers: list, *, db: Session = None, assessmen
     blocks.append(
         schemas.TopCareersBlock(
             items=top_careers or [],
-            limit=3,
+            limit=career_limit,
         )
     )
 
@@ -194,7 +194,8 @@ def get_student_results_history(
     # 4) Map to response schema
     results: List[schemas.StudentResultHistoryItem] = []
     for r in rows:
-        top_careers = _summarize_top_careers(r.recommended_careers, limit=3) or []
+        career_limit = 368 if (current_user.subscription_tier or "free").lower() == "premium" else 3
+        top_careers = _summarize_top_careers(r.recommended_careers, limit=career_limit) or []
 
         results.append(
             schemas.StudentResultHistoryItem(
@@ -206,7 +207,7 @@ def get_student_results_history(
                 recommended_stream=r.recommended_stream,
                 top_careers=top_careers,
                 results_payload_version="v1",
-                blocks=_build_blocks_for_result(top_careers, db=db, assessment_id=r.assessment_id),
+                blocks=_build_blocks_for_result(top_careers, db=db, assessment_id=r.assessment_id, career_limit=career_limit),
                 status=None,                          # not stored today
             )
         )
