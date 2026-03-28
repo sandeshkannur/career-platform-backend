@@ -48,6 +48,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     dob = Column(Date, nullable=False)
     is_minor = Column(Boolean, nullable=False, default=False)
+    tier = Column(String, nullable=False, default="free")
     guardian_email = Column(String, nullable=True)
     role = Column(String, nullable=False, default="student")
 
