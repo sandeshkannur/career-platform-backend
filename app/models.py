@@ -140,6 +140,7 @@ class Skill(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
+    display_name = Column(String(200), nullable=True)
 class SkillAlias(Base):
     """
     PR42: Alias → Canonical mapping used during ingestion.
