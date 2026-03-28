@@ -537,10 +537,11 @@ def get_my_session(
         id=user.id,
         full_name=user.full_name,
         email=user.email,
-        role=getattr(user, "role", "student"),  # safe default if role is missing
+        role=getattr(user, "role", "student"),
         is_minor=user.is_minor,
         guardian_email=getattr(user, "guardian_email", None),
         student_profile=student_profile,
-        consent_verified=bool(consent_verified),  # ✅ critical for frontend routing
+        consent_verified=bool(consent_verified),
+        tier=getattr(user, "tier", "free"),
         message="Session active",
     )

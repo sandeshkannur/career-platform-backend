@@ -1068,6 +1068,7 @@ class SessionUserOut(BaseModel):
     # This flag is consumed by frontend routing logic.
     # It MUST be derived from consent_logs in /v1/auth/me (do NOT store on user table).
     consent_verified: bool = False
+    tier: str = "free"
 
     message: Optional[str] = None
 
