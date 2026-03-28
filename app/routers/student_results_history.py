@@ -194,8 +194,8 @@ def get_student_results_history(
     # 4) Map to response schema
     results: List[schemas.StudentResultHistoryItem] = []
     for r in rows:
-        career_limit = 368 if (current_user.subscription_tier or "free").lower() == "premium" else 3
-        top_careers = _summarize_top_careers(r.recommended_careers, limit=career_limit) or []
+        top_careers = _summarize_top_careers(r.recommended_careers, limit=368) or []
+        career_limit = 368
 
         results.append(
             schemas.StudentResultHistoryItem(
