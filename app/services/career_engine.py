@@ -11,7 +11,7 @@ def compute_careers_for_student(
     student_id: int,
     db: Session,
     *,
-    limit: int = 3,
+    limit: int = 368,
     include_explainability: bool = True,
     include_keyskills: bool = True,
     include_clusters: bool = True,

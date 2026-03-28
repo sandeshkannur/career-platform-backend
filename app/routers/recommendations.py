@@ -31,7 +31,6 @@ def _compute_recommendations_payload(student_id: int, db: Session) -> dict:
     recommendations = compute_careers_for_student(
         student_id=student_id,
         db=db,
-        limit=3,
         include_explainability=True,
         include_keyskills=True,
         include_clusters=True,
