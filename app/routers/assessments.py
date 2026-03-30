@@ -53,6 +53,31 @@ router = APIRouter(
     tags=["Assessments"],
 )
 
+def _derive_stream_from_careers(careers_safe: list) -> str:
+    """Derive recommended stream from top career cluster."""
+    CLUSTER_TO_STREAM = {
+        "STEM":         "Sciences",
+        "Health Sci":   "Sciences",
+        "Info Tech":    "Sciences",
+        "Manufacturing":"Sciences",
+        "Agriculture":  "Sciences",
+        "Architecture": "Humanities & Arts",
+        "Arts & A/V":   "Humanities & Arts",
+        "Education":    "Humanities & Arts",
+        "Government":   "Humanities & Arts",
+        "Law/Safety":   "Humanities & Arts",
+        "Business":     "Commerce",
+        "Finance":      "Commerce",
+        "Marketing":    "Commerce",
+        "Human Serv":   "Commerce",
+        "Hospitality":  "Vocational",
+    }
+    if not careers_safe:
+        return "Undecided"
+    top = careers_safe[0]
+    cluster = top.get("cluster") or top.get("cluster_title") or ""
+    return CLUSTER_TO_STREAM.get(cluster, "Undecided")
+
 def build_contrib_trace_v1(
     assessment_id: int,
     assessment_version: str | None,
@@ -982,7 +1007,7 @@ def submit_assessment(
             )
             careers_safe = []
 
-        existing.recommended_stream = "Auto"
+        existing.recommended_stream = _derive_stream_from_careers(careers_safe)
         existing.recommended_careers = careers_safe
         existing.skill_tiers = tiers
         existing.generated_at = datetime.utcnow()
@@ -1026,7 +1051,7 @@ def submit_assessment(
             )
             careers_safe = []
 
-        stream_used = "Auto"
+        stream_used = _derive_stream_from_careers(careers_safe)
 
         result = models.AssessmentResult(
             assessment_id=assessment_id,
@@ -1557,7 +1582,7 @@ def generate_result(assessment_id: int, student_id: int) -> None:
             )
             careers_safe = []
 
-        stream_used = "Auto"
+        stream_used = _derive_stream_from_careers(careers_safe)
 
         # Save assessment result
         result = models.AssessmentResult(
