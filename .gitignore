@@ -28,3 +28,10 @@ venv/
 
 # Ignore local snapshot generation folders
 Snapshot/
+
+# Temporary diagnostic scripts (never commit)
+tmp_*.py
+export_v1_seedpack.py
+make_qft_upload_ready.py
+*.csv
+data/
