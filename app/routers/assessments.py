@@ -22,9 +22,9 @@ from app.database import SessionLocal
 from app.auth.auth import get_current_active_user
 from sqlalchemy import func
 from sqlalchemy import text
-from app.schemas_resume import ActiveAssessmentResponse
-from app.schemas_response_submit import SubmitResponseOut
-from app.schemas_assessment_questions import AssessmentQuestionsResponse
+from app.schemas import ActiveAssessmentResponse
+from app.schemas import SubmitResponseOut
+from app.schemas import AssessmentQuestionsResponse
 
 # Scoring logic for assessments (kept)
 from app.utils.scoring import compute_skill_scores, assign_tiers_scaled_0_100, compute_cps_v1, compute_hsi_v1
