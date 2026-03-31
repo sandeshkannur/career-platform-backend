@@ -16,6 +16,9 @@ from sqlalchemy import and_
 
 from app import models, schemas
 from app.deps import get_db
+# SessionLocal imported directly for background tasks only (cannot use Depends(get_db)
+# outside request lifecycle — see generate_result() background function)
+from app.database import SessionLocal
 from app.auth.auth import get_current_active_user
 from sqlalchemy import func
 from sqlalchemy import text
@@ -45,7 +48,6 @@ from app.services.analytics_orchestrator_service import recompute_student_analyt
 from app.services.career_engine import compute_careers_for_student
 
 # Step 5 fix: background task must create its own session
-from app.database import SessionLocal
 
 
 
