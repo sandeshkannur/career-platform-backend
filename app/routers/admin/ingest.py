@@ -124,6 +124,10 @@ def _parse_optional_int(value):
     return int(s)
 
 
+# Purpose: Upload StudentSkill → KeySkill semantic map from Excel
+# Input:   .xlsx — skill_code, keyskill_id (via ingest_skill_keyskill_map service)
+# Writes:  skill_keyskill_map table
+# Idempotent: Yes — upsert on conflict
 @router.post(
     "/upload-skill-keyskill-map",
     summary="PR46: Upload StudentSkill → KeySkill semantic map from Excel (dry_run supported)",
@@ -160,6 +164,10 @@ async def upload_skill_keyskill_map(
 # 1. UPLOAD CAREER CLUSTERS
 # ============================================================
 
+# Purpose: Bulk upload or update career clusters from CSV
+# Input:   CSV — columns: cluster_id, cluster_name
+# Writes:  career_clusters table
+# Idempotent: Yes — upsert on conflict (update name if exists)
 @router.post(
     "/upload-career-clusters",
     response_model=UploadResponse,
@@ -248,6 +256,10 @@ async def upload_career_clusters(
 # 2. UPLOAD CAREERS
 # ============================================================
 
+# Purpose: Bulk upload or update career entries from CSV
+# Input:   CSV — columns: career_id, career_name, cluster_id
+# Writes:  careers table
+# Idempotent: Yes — upsert on conflict (update title/cluster if exists)
 @router.post(
     "/upload-careers",
     response_model=UploadResponse,
@@ -336,6 +348,10 @@ async def upload_careers(
 # 3. UPLOAD KEY SKILLS
 # ============================================================
 
+# Purpose: Bulk upload or update key skills from CSV
+# Input:   CSV — columns: keyskill_id, keyskill_name
+# Writes:  keyskills table
+# Idempotent: Yes — upsert on conflict (update name if exists)
 @router.post(
     "/upload-keyskills",
     response_model=UploadResponse,
@@ -410,6 +426,10 @@ async def upload_keyskills(
 # 4. CAREER ↔ KEYSKILL MAPPING
 # ============================================================
 
+# Purpose: Bulk upload career ↔ key-skill association mappings from CSV
+# Input:   CSV — columns: career_id, keyskill_id
+# Writes:  career_keyskill_association table
+# Idempotent: No — skips duplicates (existing rows are not updated)
 @router.post(
     "/upload-career-keyskill-map",
     response_model=UploadResponse,
@@ -499,6 +519,10 @@ async def upload_career_keyskill_map(
 # PR36. UPLOAD CAREER ↔ KEYSKILL WEIGHTS (STRICT SUM=100)
 # ============================================================
 
+# Purpose: Upload career ↔ key-skill weights with strict sum=100 validation per career
+# Input:   CSV — columns: career_id, keyskill_id, weight_percentage
+# Writes:  career_keyskill_association table (weight_percentage column)
+# Idempotent: Yes — upsert on conflict (dry_run supported)
 @router.post(
     "/upload-career-keyskill-weights",
     summary="Bulk upload Career ↔ KeySkill weights via CSV (sum=100 per career, strict)",
@@ -711,6 +735,10 @@ async def upload_career_keyskill_weights(
     }
 
 
+# Purpose: Upload question → student-skill weights (QSSW) for scoring
+# Input:   CSV — columns: canonical_student_skill, weight, question_id or question_code
+# Writes:  question_student_skill_weights table
+# Idempotent: Yes — upsert on conflict (dry_run supported)
 @router.post(
     "/upload-question-student-skill-weights",
     response_model=schemas.QSSWUploadResult,
@@ -913,6 +941,10 @@ async def upload_question_student_skill_weights(
 # 7. UPLOAD QUESTIONS (B1)
 # ============================================================
 
+# Purpose: Bulk upload versioned assessment questions from CSV
+# Input:   CSV + form field assessment_version — question_text_en, skill_id, etc.
+# Writes:  questions table
+# Idempotent: No — skips duplicates (existing rows not updated)
 @router.post(
     "/upload-questions",
     response_model=UploadQuestionsResult,
@@ -1060,6 +1092,10 @@ async def upload_questions(
 # ============================================================
 # PR1. UPLOAD ASSOCIATED QUALITIES (AQ_MASTER)
 # ============================================================
+# Purpose: Bulk upload Associated Quality (AQ) master records from CSV
+# Input:   CSV — columns: assessment_version, aq_code, name_en, name_hi, name_ta, status
+# Writes:  associated_qualities_v table
+# Idempotent: Yes — upsert on conflict
 @router.post(
     "/upload-aqs",
     response_model=UploadResponse,
@@ -1191,6 +1227,10 @@ async def upload_aqs(
 # PR1. UPLOAD AQ FACETS (AQ_FACET_TAXONOMY) - VERSIONED
 # ============================================================
 
+# Purpose: Bulk upload AQ facet taxonomy records from CSV
+# Input:   CSV — columns: assessment_version, facet_code, aq_code, name_en, name_hi, name_ta, ...
+# Writes:  aq_facets_v table
+# Idempotent: Yes — upsert on conflict
 @router.post(
     "/upload-aq-facets",
     response_model=UploadResponse,
@@ -1403,6 +1443,10 @@ async def upload_aq_facets(
 # PR2. UPLOAD QUESTION ↔ AQ_FACET TAGGING (QUESTION_AQ_FACET_TAGGING)
 # ============================================================
 
+# Purpose: Bulk upload question ↔ AQ facet tagging from CSV
+# Input:   CSV — columns: assessment_version, question_code, facet_code, tag_weight
+# Writes:  question_facet_tags_v table
+# Idempotent: Yes — upsert on conflict
 @router.post(
     "/upload-question-facet-tags",
     response_model=UploadResponse,
@@ -1558,6 +1602,10 @@ async def upload_question_facet_tags(
 # PR3. UPLOAD AQ STUDENTSKILL WEIGHTS
 # ============================================================
 
+# Purpose: Upload AQ → student-skill weight bridge for scoring (versioned)
+# Input:   CSV — columns: assessment_version, aq_code, skill_id, weight
+# Writes:  aq_student_skill_weights table
+# Idempotent: Yes — upsert on conflict
 @router.post("/upload-aq-studentskill-weights")
 async def upload_aq_studentskill_weights(
     file: UploadFile = File(...),
@@ -1744,6 +1792,10 @@ async def upload_aq_studentskill_weights(
 # PR16. upload_explainability_language_pack
 # ============================================================
 
+# Purpose: Bulk upload CMS explainability copy (versioned + locale-aware)
+# Input:   CSV — columns: version, locale, explanation_key, text, is_active
+# Writes:  explainability_content table
+# Idempotent: Yes — upsert on conflict (version, locale, explanation_key)
 @router.post("/upload-explainability-language-pack", response_model=ExplainabilityUploadResult)
 def upload_explainability_language_pack(
     file: UploadFile = File(...),
@@ -1855,6 +1907,10 @@ def upload_explainability_language_pack(
         errors=errors,
     )
 
+# Purpose: Upload alias → canonical code mappings for AQ/FACET/SKILL ingestion
+# Input:   CSV — columns: entity_type, alias, canonical_code, assessment_version
+# Writes:  skill_aliases table
+# Idempotent: Yes — upsert on conflict
 @router.post(
     "/upload-skill-aliases",
     response_model=UploadResponse,
