@@ -1,3 +1,8 @@
+"""Questions router (localized).
+Exposes assessment question delivery under /v1/questions/.
+Role gate: authenticated students (own assessment only).
+Reads: questions, question_translations, assessment_questions tables.
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session

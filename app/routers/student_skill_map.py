@@ -1,3 +1,8 @@
+"""Student ↔ Skill map router.
+Exposes skill mapping endpoints under /v1/students/.
+Role gate: admin only for writes; student for own reads.
+Reads/writes: student_skill_map table.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List

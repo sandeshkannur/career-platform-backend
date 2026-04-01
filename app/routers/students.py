@@ -1,3 +1,8 @@
+"""Students router.
+Exposes student profile and onboarding endpoints under /v1/students/.
+Role gate: authenticated (student for own profile; admin for all).
+Reads/writes: students, users tables.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List

@@ -1,3 +1,8 @@
+"""Career clusters router.
+Exposes CRUD endpoints under /v1/career-clusters/.
+Role gate: authenticated users (read); admin for write operations.
+Reads/writes: career_clusters table.
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError

@@ -1,3 +1,8 @@
+"""Users router (not yet mounted in main.py).
+Will expose user management endpoints under /v1/users/ in a future admin PR.
+Role gate: admin only.
+Reads/writes: users table.
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from .. import models, schemas, deps

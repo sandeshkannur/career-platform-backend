@@ -1,3 +1,8 @@
+"""Career ↔ KeySkill mapping router.
+Exposes mapping endpoints under /v1/career-keyskill-map/.
+Role gate: authenticated users.
+Reads/writes: career_keyskill_association table.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, deps
