@@ -514,3 +514,107 @@ def _write_ratings(
             importance_rating     = _normalise(s.importance_rating),
             rationale             = s.rationale,
         ))
+
+
+# ============================================================
+# Endpoint 6: Run aggregation engine for a career+round
+# Purpose:    Compute final calibrated AQ weights from SME submissions
+# Input:      JSON body { career_id, round_number }
+# Writes:     career_aq_weights (upsert), sme_profiles.calibration_score
+# Idempotent: Yes — rerunning overwrites previous result for same round
+# ============================================================
+
+class AggregationRequest(BaseModel):
+    """Input for triggering aggregation."""
+    career_id:    int
+    round_number: int = Field(1, ge=1)
+
+
+@router.post(
+    "/sme/aggregate",
+    status_code=200,
+    summary="ADM-B03: Run weighted aggregation engine for a career+round",
+)
+def run_aggregation(
+    payload: AggregationRequest,
+    db:      Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Trigger the SME weighted aggregation engine for a specific career+round.
+    Reads all submitted SME ratings, computes calibration scores per SME,
+    and writes final AQ weights to career_aq_weights table.
+
+    Safe to re-run — subsequent calls overwrite previous results for the
+    same career+round without affecting is_promoted weights.
+
+    Returns a summary with computed weights, calibration updates, and warnings.
+    """
+    from app.services.sme_aggregation import run_aggregation as _run_agg
+    try:
+        summary = _run_agg(
+            db=db,
+            career_id=payload.career_id,
+            round_number=payload.round_number,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("ADM-B03: Aggregation failed for career=%s round=%s",
+                         payload.career_id, payload.round_number)
+        raise HTTPException(status_code=500, detail=f"Aggregation failed: {e}")
+
+    logger.info("ADM-B03: Aggregation complete via API — career=%s round=%s smes=%s aqs=%s",
+                payload.career_id, payload.round_number,
+                summary["sme_count"], summary["aq_count"])
+    return summary
+
+
+# ============================================================
+# Endpoint 7: View aggregated weights for a career
+# Purpose:    Admin reviews computed AQ weights before promotion
+# Input:      Path param career_id + optional ?round=N
+# Reads:      career_aq_weights table
+# Idempotent: Yes — read-only
+# ============================================================
+
+@router.get(
+    "/sme/weights/{career_id}",
+    status_code=200,
+    summary="ADM-B03: View computed AQ weights for a career",
+)
+def get_career_weights(
+    career_id:    int,
+    round_number: int = Query(1, ge=1, description="Validation round number"),
+    db:           Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Return all computed AQ weights for a career+round.
+    Shows final_weight, median_rating, std_deviation, sme_count, and promotion status.
+    Returns empty list if aggregation has not been run yet for this career+round.
+    """
+    from app.models import CareerAQWeight
+    weights = db.query(CareerAQWeight).filter(
+        CareerAQWeight.career_id    == career_id,
+        CareerAQWeight.round_number == round_number,
+    ).order_by(CareerAQWeight.aq_code).all()
+
+    return {
+        "career_id":    career_id,
+        "round_number": round_number,
+        "aq_count":     len(weights),
+        "weights": [
+            {
+                "aq_code":       w.aq_code,
+                "final_weight":  w.final_weight,
+                "median_rating": w.median_rating,
+                "std_deviation": w.std_deviation,
+                "sme_count":     w.sme_count,
+                "is_promoted":   w.is_promoted,
+                "promoted_at":   w.promoted_at,
+                "computed_at":   w.computed_at,
+            }
+            for w in weights
+        ],
+    }

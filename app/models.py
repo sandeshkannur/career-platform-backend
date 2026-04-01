@@ -1106,3 +1106,77 @@ class SMEKeySkillSuggestion(Base):
     __table_args__ = (
         Index("ix_sme_keyskill_suggestions_review_status", "review_status"),
     )
+
+
+# =========================================================
+# ADM-B03: Career AQ Weights — Aggregation Engine Output
+# Part of the A01 SME Validation & Expert Management section.
+#
+# This table stores the FINAL computed AQ weights per career+round,
+# produced by the weighted aggregation engine (sme_aggregation service).
+#
+# Algorithm:
+#   1. Collect all submitted SME ratings for career+round
+#   2. Compute group median per AQ
+#   3. Per SME: calibration_score = 1 - mean(|rating - median|) across all AQs
+#   4. Per SME: effective_weight = credentials_score × calibration_score
+#   5. Per AQ:  final_weight = Σ(rating_i × eff_weight_i) / Σ(eff_weight_i)
+#
+# This table is the source of truth for career-AQ weight promotion to production.
+# Rows are never deleted — each round creates new rows (round_number differentiates).
+# =========================================================
+
+class CareerAQWeight(Base):
+    """
+    Final aggregated AQ weight for a career, computed by ADM-B03 engine.
+
+    One row per career+aq_code+round_number combination.
+    Produced by POST /admin/sme/aggregate — never written manually.
+
+    final_weight: the calibration-weighted average of all SME ratings.
+    sme_count: how many SMEs contributed to this weight.
+    median_rating: group median before weighting (useful for audit).
+    std_deviation: spread of SME ratings (high = disagreement between SMEs).
+    is_promoted: True once admin promotes this weight to production scoring.
+    """
+    __tablename__ = "career_aq_weights"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    career_id    = Column(Integer, ForeignKey("careers.id"), nullable=False, index=True)
+    aq_code      = Column(String(20), nullable=False)
+    round_number = Column(Integer,  nullable=False, default=1)
+
+    # ── Aggregation outputs ───────────────────────────────────────────────
+    # Calibration-weighted average of all SME ratings for this AQ+career
+    final_weight   = Column(Float, nullable=False)
+
+    # Raw statistics for audit and transparency
+    median_rating  = Column(Float, nullable=True)   # group median before weighting
+    std_deviation  = Column(Float, nullable=True)   # spread of SME ratings
+    sme_count      = Column(Integer, nullable=False, default=0)  # contributing SMEs
+
+    # ── Promotion lifecycle ───────────────────────────────────────────────
+    # is_promoted: False until admin explicitly promotes via ADM-B16
+    # Once promoted, this weight flows into the student scoring engine
+    is_promoted    = Column(Boolean, nullable=False, default=False)
+    promoted_at    = Column(DateTime(timezone=True), nullable=True)
+    promoted_by    = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # ── Audit timestamps ──────────────────────────────────────────────────
+    computed_at    = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    career   = relationship("Career")
+    promoter = relationship("User")
+
+    __table_args__ = (
+        # One weight per career+AQ+round — rerunning aggregation overwrites
+        UniqueConstraint("career_id", "aq_code", "round_number",
+                         name="uq_career_aq_weight_career_aq_round"),
+        Index("ix_career_aq_weights_career_id",    "career_id"),
+        Index("ix_career_aq_weights_is_promoted",  "is_promoted"),
+    )
