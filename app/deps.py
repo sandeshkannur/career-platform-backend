@@ -1,11 +1,21 @@
+"""
+FastAPI database dependency — single source of truth for get_db().
+All routers must import get_db from here, never from app.database directly.
+"""
 from .database import SessionLocal
+from sqlalchemy.orm import Session
+
 
 def get_db():
-    db = SessionLocal()
+    """
+    Yields a SQLAlchemy DB session for use as a FastAPI dependency.
+    Closes the session automatically after the request completes.
+
+    Usage in a router:
+        db: Session = Depends(get_db)
+    """
+    db: Session = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-# 👇 convenience import so other routers can do:
-#   from app.deps import get_current_user
-#from app.auth.auth import get_current_user  # noqa

@@ -1,44 +1,45 @@
 # app/main.py
 """
-Career Counseling API - main entrypoint
+Career Counseling API — application entrypoint.
 
-Key notes (DEV):
-- CORS is configured ONCE (do not duplicate CORSMiddleware).
-- Because the frontend uses fetch(..., credentials: "include") for refresh-token readiness,
-  allow_origins MUST be explicit (cannot be "*") when allow_credentials=True.
+Structure:
+  - Environment loading (.env → system env fallback)
+  - create_app() factory: CORS, health endpoints, router wiring
+  - Global app instance for Uvicorn: app.main:app
+
+CORS note: allow_origins must be explicit (not "*") because the frontend
+uses credentials: "include" for cookie-ready refresh token architecture.
 """
-
+import logging
 import os
+
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# ENVIRONMENT LOADING
+# Load .env file if present; fall back to system environment variables.
+# In production (Docker/EC2) environment variables are injected directly
+# and .env will not be present — that is expected and safe.
+# ============================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dotenv_path = os.path.join(BASE_DIR, ".env")
 
-print(f"INFO: Attempting to load .env file from: {dotenv_path}")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
-    print(f"INFO: Successfully loaded .env file from: {dotenv_path}")
+    logger.info("Loaded .env file from: %s", dotenv_path)
 else:
-    print(
-        f"WARNING: .env file not found at: {dotenv_path}. "
-        "Using system environment variables or defaults."
-    )
+    logger.info("No .env file found at %s — using system environment variables.", dotenv_path)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SKIP_DB_WAIT = os.getenv("SKIP_DB_WAIT", "0")
-
-print(f"DEBUG: POSTGRES_HOST from env: {os.getenv('POSTGRES_HOST')}")
-print(f"DEBUG: POSTGRES_PORT from env: {os.getenv('POSTGRES_PORT')}")
-print(f"DEBUG: POSTGRES_USER from env: {os.getenv('POSTGRES_USER')}")
-print(f"DEBUG: POSTGRES_DB from env: {os.getenv('POSTGRES_DB')}")
-print(f"DEBUG: DATABASE_URL from env: {DATABASE_URL}")
-print(f"DEBUG: SKIP_DB_WAIT from env: {SKIP_DB_WAIT}")
 
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.openapi import apply_openapi_security
 from app.core.startup import run_startup_tasks
-import app.models  # noqa: F401
+import app.models  # noqa: F401 — ensures all ORM models are registered before create_all()
 
 
 # ============================================================
@@ -164,14 +165,14 @@ def create_app() -> FastAPI:
 
     # Core reference data
     api_v1.include_router(career_clusters.router, prefix="/career-clusters", tags=["Career Clusters"])
-    api_v1.include_router(careers.router, prefix="", tags=["Careers"])
-    api_v1.include_router(skills.router, prefix="", tags=["Skills"])
+    api_v1.include_router(careers.router, prefix="", tags=["Careers"])                          # → /v1/careers/*
+    api_v1.include_router(skills.router, prefix="", tags=["Skills"])                            # → /v1/skills/*
     api_v1.include_router(key_skills_router, prefix="/key-skills", tags=["Key Skills"])
 
     # Student-related
-    api_v1.include_router(students.router, prefix="", tags=["Students"])
-    api_v1.include_router(student_skill_map.router, prefix="", tags=["Student ↔ Skill Map"])
-    api_v1.include_router(student_keyskill_map.router, prefix="", tags=["StudentKeySkillMap"])
+    api_v1.include_router(students.router, prefix="", tags=["Students"])                        # → /v1/students/*
+    api_v1.include_router(student_skill_map.router, prefix="", tags=["Student ↔ Skill Map"])    # → /v1/students/*/skill-map
+    api_v1.include_router(student_keyskill_map.router, prefix="", tags=["StudentKeySkillMap"])  # → /v1/students/*/keyskill-map
 
     # Mappings + recommendations
     api_v1.include_router(career_keyskill_map.router, prefix="/career-keyskill-map", tags=["Career ↔ KeySkill Map"])
@@ -179,29 +180,29 @@ def create_app() -> FastAPI:
 
     # Analytics
     api_v1.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
-    api_v1.include_router(paid_analytics.router, prefix="", tags=["Paid Analytics"])
-    api_v1.include_router(scorecard.router, prefix="", tags=["Scorecard"])
+    api_v1.include_router(paid_analytics.router, prefix="", tags=["Paid Analytics"])            # → /v1/paid-analytics/*
+    api_v1.include_router(scorecard.router, prefix="", tags=["Scorecard"])                      # → /v1/analytics/scorecard/*
 
     # ✅ B5: student random question delivery
-    api_v1.include_router(questions_random_router, prefix="", tags=["Questions"])
+    api_v1.include_router(questions_random_router, prefix="", tags=["Questions"])               # → /v1/questions/random
 
     # ✅ B6: student localized question list
-    api_v1.include_router(questions_router, prefix="", tags=["Questions"])
+    api_v1.include_router(questions_router, prefix="", tags=["Questions"])                      # → /v1/questions/*
 
     # Student dashboard (B10) - avoid double prefix by mounting here
     api_v1.include_router(student_dashboard_router, prefix="/students", tags=["Students"])
 
     # B11: Expose assessment history for students (ownership enforced)
-    api_v1.include_router(student_assessment_history.router, prefix="", tags=["Students"])
+    api_v1.include_router(student_assessment_history.router, prefix="", tags=["Students"])      # → /v1/students/*/assessments
 
     # B12: Expose historical career results for students (ownership enforced, read-only)
-    api_v1.include_router(student_results_history_router, prefix="", tags=["Students"])
+    api_v1.include_router(student_results_history_router, prefix="", tags=["Students"])         # → /v1/students/*/results
 
     # B13: Consent verification (compliance, guardian-facing)
-    api_v1.include_router(consent_router, prefix="", tags=["Consent"])
+    api_v1.include_router(consent_router, prefix="", tags=["Consent"])                          # → /v1/consent/*
 
     # B14: Student report endpoint (read-only, ownership enforced)
-    api_v1.include_router(reports_router, prefix="", tags=["Reports"])
+    api_v1.include_router(reports_router, prefix="", tags=["Reports"])                          # → /v1/reports/*
 
     api_v1.include_router(content.router, prefix="/content", tags=["Content"])
 
@@ -209,12 +210,10 @@ def create_app() -> FastAPI:
     app.include_router(api_v1)
 
     # ------------------------------------------------------------
-    # 3F) STARTUP DEBUG (OPTIONAL)
+    # 3F) STARTUP COMPLETE
+    # Route list is available at /openapi.json — no need to print here.
     # ------------------------------------------------------------
-    print("INFO: Application startup sequence complete in main.py.")
-    print("INFO: Registered FastAPI Routes:")
-    for route in app.routes:
-        print(f" - {route.path}")
+    logger.info("Application startup complete. %d routes registered.", len(app.routes))
 
     return app
 

@@ -1,3 +1,8 @@
+"""Content router.
+Exposes CMS explainability content endpoints under /v1/content/.
+Role gate: public (read-only explainability content for student-facing pages).
+Reads: explainability_content table.
+"""
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Query

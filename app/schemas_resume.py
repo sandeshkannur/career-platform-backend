@@ -1,3 +1,4 @@
+# DEPRECATED: Import via app.schemas instead. This file kept for backward compatibility.
 from pydantic import BaseModel
 from typing import Optional
 

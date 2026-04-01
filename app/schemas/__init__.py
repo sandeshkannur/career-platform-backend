@@ -44,3 +44,15 @@ try:
     from .questions_student import *  # noqa: F401,F403
 except Exception:
     pass
+try:
+    from app.schemas_response_submit import *  # noqa: F401,F403
+except Exception:
+    pass
+try:
+    from app.schemas_resume import *  # noqa: F401,F403
+except Exception:
+    pass
+try:
+    from app.schemas_assessment_questions import *  # noqa: F401,F403
+except Exception:
+    pass

@@ -728,9 +728,6 @@ class QuestionStudentSkillWeight(Base):
 # PR16: CMS-backed explainability content (versioned + locale-aware)
 # =========================================================
 
-from sqlalchemy import UniqueConstraint
-from sqlalchemy.sql import func
-
 class ExplainabilityContent(Base):
     __tablename__ = "explainability_content"
 

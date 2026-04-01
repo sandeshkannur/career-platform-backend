@@ -51,18 +51,3 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-# ============================================================
-# FASTAPI DB DEPENDENCY
-# ============================================================
-
-def get_db():
-    """
-    FastAPI dependency that yields a SQLAlchemy session and closes it after the request.
-    Usage:
-        db: Session = Depends(get_db)
-    """
-    db: Session = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

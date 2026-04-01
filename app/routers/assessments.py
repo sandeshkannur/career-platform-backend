@@ -16,12 +16,15 @@ from sqlalchemy import and_
 
 from app import models, schemas
 from app.deps import get_db
+# SessionLocal imported directly for background tasks only (cannot use Depends(get_db)
+# outside request lifecycle — see generate_result() background function)
+from app.database import SessionLocal
 from app.auth.auth import get_current_active_user
 from sqlalchemy import func
 from sqlalchemy import text
-from app.schemas_resume import ActiveAssessmentResponse
-from app.schemas_response_submit import SubmitResponseOut
-from app.schemas_assessment_questions import AssessmentQuestionsResponse
+from app.schemas import ActiveAssessmentResponse
+from app.schemas import SubmitResponseOut
+from app.schemas import AssessmentQuestionsResponse
 
 # Scoring logic for assessments (kept)
 from app.utils.scoring import compute_skill_scores, assign_tiers_scaled_0_100, compute_cps_v1, compute_hsi_v1
@@ -45,7 +48,6 @@ from app.services.analytics_orchestrator_service import recompute_student_analyt
 from app.services.career_engine import compute_careers_for_student
 
 # Step 5 fix: background task must create its own session
-from app.database import SessionLocal
 
 
 

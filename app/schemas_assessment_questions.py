@@ -1,4 +1,5 @@
 # app/schemas_assessment_questions.py
+# DEPRECATED: Import via app.schemas instead. This file kept for backward compatibility.
 
 from typing import List, Optional
 
