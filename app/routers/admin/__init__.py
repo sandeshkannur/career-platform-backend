@@ -11,11 +11,12 @@ Sub-modules:
   users.py      — 5 user and skill-map management endpoints
   validation.py — 4 knowledge-pack and explainability validation endpoints
   sme.py        — 4 SME Registry CRUD endpoints
+  submissions.py — 3 token/submission admin endpoints
 """
 from fastapi import APIRouter, Depends
 from app.auth.auth import require_role
 
-from app.routers.admin import ingest, questions, users, validation, sme
+from app.routers.admin import ingest, questions, users, validation, sme, submissions
 
 # Top-level router — all sub-routers inherit the admin role gate
 router = APIRouter(
@@ -28,3 +29,4 @@ router.include_router(questions.router)
 router.include_router(users.router)
 router.include_router(validation.router)
 router.include_router(sme.router)
+router.include_router(submissions.router)

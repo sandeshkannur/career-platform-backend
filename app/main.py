@@ -155,12 +155,16 @@ def create_app() -> FastAPI:
     # B14: Student report download payload (read-only)
     from app.routers.reports import router as reports_router
 
+    # ADM-B02: SME public form endpoints (token-only auth, no login required)
+    from app.routers.admin.submissions import public_router as sme_public_router
+
     # --- Create a single /v1 aggregator router ---
     api_v1 = APIRouter(prefix="/v1")
 
     # Auth + Admin + Assessments
     api_v1.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     api_v1.include_router(admin.router, prefix="/admin", tags=["Admin Panel"])
+    api_v1.include_router(sme_public_router, prefix="", tags=["SME Form"])                        # → /v1/sme/form/*
     api_v1.include_router(assessments.router, prefix="/assessments", tags=["Assessments"])
 
     # Core reference data
