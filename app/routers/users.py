@@ -4,10 +4,11 @@ from .. import models, schemas, deps
 from app.auth.auth import get_current_active_user
 
 
-# Initialize router for user-related endpoints
+# NOTE: This router is not yet mounted in main.py.
+# Registration will happen in a future admin sprint PR.
 router = APIRouter(
-    prefix="/careers",
-    tags=["Careers"],
+    prefix="/users",
+    tags=["Users"],
     dependencies=[Depends(get_current_active_user)],
 )
 
