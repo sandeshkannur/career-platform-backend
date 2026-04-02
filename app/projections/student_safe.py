@@ -44,6 +44,20 @@ _BLOCK_KEYS = {
     "top_keyskill_weights",
 }
 
+# Numeric values that are safe to keep even though they are integers.
+# Without this allowlist, project_student_safe drops ALL int-valued dict entries
+# (e.g. career_id) because the generic guard treats any numeric leaf as a score leak.
+_ALLOW_NUMERIC_KEYS = {
+    "career_id",
+    "cluster_id",
+    "question_id",
+    "skill_id",
+    "keyskill_id",
+    "student_id",
+    "assessment_id",
+    "chapter_id",
+}
+
 
 def _strip_numbers_from_text(text: str) -> str:
     """
@@ -77,8 +91,9 @@ def project_student_safe(obj: Any) -> Any:
 
             projected = project_student_safe(v)
 
-            # If projected becomes a pure number, drop it (defensive)
-            if isinstance(projected, (int, float)):
+            # If projected becomes a pure number, drop it (defensive) —
+            # UNLESS the key is explicitly allowlisted as a safe identifier.
+            if isinstance(projected, (int, float)) and key not in _ALLOW_NUMERIC_KEYS:
                 continue
 
             out[key] = projected
