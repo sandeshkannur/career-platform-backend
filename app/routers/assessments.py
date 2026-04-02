@@ -288,6 +288,8 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
                 q.question_type,
                 q.response_options,
                 q.renderer_config,
+                q.question_text_en,
+                q.question_text_kn,
                 t.facet_code,
                 ROW_NUMBER() OVER (
                   PARTITION BY f.aq_code, t.facet_code
@@ -321,14 +323,16 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
             picked AS (
               SELECT question_id, question_code, aq_code,
                      chapter_id, question_type,
-                     response_options, renderer_config
+                     response_options, renderer_config,
+                     question_text_en, question_text_kn
               FROM ranked_per_aq
               WHERE aq_rn = 1
                  OR (aq_rn = 2 AND facet_code != prev_facet)
             )
             SELECT question_id, question_code, aq_code,
                    chapter_id, question_type,
-                   response_options, renderer_config
+                   response_options, renderer_config,
+                   question_text_en, question_text_kn
             FROM picked
             ORDER BY chapter_id NULLS LAST, aq_code, question_id;
             """
@@ -1338,7 +1342,7 @@ def get_assessment_questions(
     assessment_id: int,
     lang: str | None = Query(
         None,
-        description="Optional language code: en, hi, ta (unsupported values fall back to en)",
+        description="Optional language code: en, hi, ta, kn (unsupported values fall back to en)",
     ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_active_user),
@@ -1415,6 +1419,7 @@ def get_assessment_questions(
         "en": "question_text_en",
         "hi": "question_text_hi",
         "ta": "question_text_ta",
+        "kn": "question_text_kn",
     }
 
     requested_lang = (lang or "en").strip().lower()
