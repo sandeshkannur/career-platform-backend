@@ -168,6 +168,8 @@ def create_app() -> FastAPI:
     api_v1.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     api_v1.include_router(admin.router, prefix="/admin", tags=["Admin Panel"])
     api_v1.include_router(sme_public_router, prefix="", tags=["SME Form"])                        # → /v1/sme/form/*
+    # ADM-B03: registered before assessments.router so static /chapter-content resolves before {assessment_id}
+    api_v1.include_router(chapter_content_router, prefix="/assessments", tags=["Chapter Content"])
     api_v1.include_router(assessments.router, prefix="/assessments", tags=["Assessments"])
 
     # Core reference data
@@ -212,9 +214,6 @@ def create_app() -> FastAPI:
     api_v1.include_router(reports_router, prefix="", tags=["Reports"])                          # → /v1/reports/*
 
     api_v1.include_router(content.router, prefix="/content", tags=["Content"])
-
-    # ADM-B03: Chapter content delivery → /v1/assessments/chapter-content/*
-    api_v1.include_router(chapter_content_router, prefix="/assessments", tags=["Chapter Content"])
 
     # --- Mount /v1 on app ---
     app.include_router(api_v1)
