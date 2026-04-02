@@ -158,6 +158,9 @@ def create_app() -> FastAPI:
     # ADM-B02: SME public form endpoints (token-only auth, no login required)
     from app.routers.admin.submissions import public_router as sme_public_router
 
+    # ADM-B03: Chapter content delivery (aggregated SME answers per chapter)
+    from app.routers.chapter_content import router as chapter_content_router
+
     # --- Create a single /v1 aggregator router ---
     api_v1 = APIRouter(prefix="/v1")
 
@@ -209,6 +212,9 @@ def create_app() -> FastAPI:
     api_v1.include_router(reports_router, prefix="", tags=["Reports"])                          # → /v1/reports/*
 
     api_v1.include_router(content.router, prefix="/content", tags=["Content"])
+
+    # ADM-B03: Chapter content delivery → /v1/assessments/chapter-content/*
+    api_v1.include_router(chapter_content_router, prefix="/assessments", tags=["Chapter Content"])
 
     # --- Mount /v1 on app ---
     app.include_router(api_v1)
