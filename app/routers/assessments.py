@@ -293,7 +293,7 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
                 t.facet_code,
                 ROW_NUMBER() OVER (
                   PARTITION BY f.aq_code, t.facet_code
-                  ORDER BY q.id
+                  ORDER BY CASE WHEN q.question_type != 'likert' THEN 0 ELSE 1 END, q.id
                 ) AS facet_rn
               FROM questions q
               JOIN question_facet_tags_v t
@@ -317,7 +317,11 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
                 LAG(facet_code) OVER (
                   PARTITION BY aq_code
                   ORDER BY facet_code, question_id
-                ) AS prev_facet
+                ) AS prev_facet,
+                LAG(question_type) OVER (
+                  PARTITION BY aq_code
+                  ORDER BY facet_code, question_id
+                ) AS prev_question_type
               FROM first_per_facet
             ),
             picked AS (
@@ -327,7 +331,7 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
                      question_text_en, question_text_kn
               FROM ranked_per_aq
               WHERE aq_rn = 1
-                 OR (aq_rn = 2 AND facet_code != prev_facet)
+                 OR (aq_rn = 2 AND (facet_code != prev_facet OR question_type != prev_question_type))
             )
             SELECT question_id, question_code, aq_code,
                    chapter_id, question_type,
