@@ -1,7 +1,7 @@
 # app/schemas_assessment_questions.py
 # DEPRECATED: Import via app.schemas instead. This file kept for backward compatibility.
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,22 @@ class AssessmentQuestionItemOut(BaseModel):
     facet_tags: List[str] = Field(
         default_factory=list,
         json_schema_extra={"example": ["AQ01.F1", "AQ01.F2"]},
+    )
+    chapter_id: Optional[int] = Field(
+        default=None,
+        json_schema_extra={"example": 1},
+    )
+    question_type: Optional[str] = Field(
+        default="likert",
+        json_schema_extra={"example": "likert"},
+    )
+    response_options: Optional[Any] = Field(
+        default=None,
+        json_schema_extra={"example": [{"label": "I make a plan", "score_value": 5}]},
+    )
+    renderer_config: Optional[Any] = Field(
+        default=None,
+        json_schema_extra={"example": {"left": "Stressed", "right": "Calm"}},
     )
 
 

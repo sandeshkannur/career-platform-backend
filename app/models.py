@@ -21,6 +21,7 @@ from sqlalchemy import (
     Index,
     Numeric,
     Text,
+    SmallInteger,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -376,6 +377,12 @@ class Question(Base):
     skill = relationship("Skill", backref="questions")
     prerequisite = relationship("Question", remote_side=[id], backref="dependents")
     question_code = Column(String(100), nullable=True)
+    chapter_id = Column(SmallInteger, nullable=True)
+    pool_id = Column(String(1), nullable=True)
+    question_type = Column(String(30), nullable=False, server_default='likert')
+    response_options = Column(JSONB, nullable=True)
+    renderer_config = Column(JSONB, nullable=True)
+    format_version = Column(String(10), nullable=False, server_default='v1')
 
 
 # =========================================================

@@ -243,47 +243,117 @@ def _enforce_scale_on_persisted_responses(db: Session, assessment_id: int) -> No
     # If we backfilled any rows, persist it (idempotent)
     db.commit()
 
-def _sample_questions_v1(db: Session) -> List[Dict]:
+def _get_attempt_number(db: Session, user_id: int) -> int:
+    """
+    Returns how many assessments this user has already created.
+    Used to cycle through pools A/B/C: attempt 0->A, 1->B, 2->C, 3->A...
+    """
+    from app import models as _m
+    count = db.query(func.count(_m.Assessment.id)).filter(
+        _m.Assessment.user_id == user_id
+    ).scalar() or 0
+    return int(count)
+
+
+def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
     """
     Returns 50 questions (2 per AQ) for assessment_version='v1'.
 
+    Improvements over original:
+    - Pool rotation: cycles A/B/C based on attempt_number so repeat
+      attempts get different questions
+    - Facet diversity: the 2 questions per AQ come from different facets
+    - Chapter order: results sorted by chapter_id so frontend chapter
+      screens trigger at the right boundaries
+    - Falls back to full pool if pool_id is NULL (backward compat)
+
     Shape:
-      [{"question_id": int, "question_code": str, "aq_code": str}, ...]
+      [{"question_id": int, "question_code": str, "aq_code": str,
+        "chapter_id": int, "question_type": str,
+        "response_options": list|None, "renderer_config": dict|None}, ...]
+
+    Scoring impact: NONE. assessment_responses still stores integer 1-5.
     """
+    pool_id = ['A', 'B', 'C'][attempt_number % 3]
+
     rows = db.execute(
         text(
             """
-            WITH pool AS (
+            WITH candidates AS (
               SELECT
-                q.id AS question_id,
+                q.id              AS question_id,
                 q.question_code,
                 f.aq_code,
-                ROW_NUMBER() OVER (PARTITION BY f.aq_code ORDER BY RANDOM()) AS rn
+                q.chapter_id,
+                q.question_type,
+                q.response_options,
+                q.renderer_config,
+                t.facet_code,
+                ROW_NUMBER() OVER (
+                  PARTITION BY f.aq_code, t.facet_code
+                  ORDER BY q.id
+                ) AS facet_rn
               FROM questions q
               JOIN question_facet_tags_v t
-                ON t.assessment_version=q.assessment_version
-               AND t.question_code=q.question_code
+                ON t.assessment_version = q.assessment_version
+               AND t.question_code = q.question_code
               JOIN aq_facets_v f
-                ON f.assessment_version=q.assessment_version
-               AND f.facet_code=t.facet_code
-              WHERE q.assessment_version='v1'
+                ON f.assessment_version = q.assessment_version
+               AND f.facet_code = t.facet_code
+              WHERE q.assessment_version = 'v1'
+                AND (q.pool_id = :pool_id OR q.pool_id IS NULL)
             ),
-            pick AS (
-              SELECT * FROM pool WHERE rn <= 2
+            first_per_facet AS (
+              SELECT * FROM candidates WHERE facet_rn = 1
+            ),
+            ranked_per_aq AS (
+              SELECT *,
+                ROW_NUMBER() OVER (
+                  PARTITION BY aq_code
+                  ORDER BY facet_code, question_id
+                ) AS aq_rn,
+                LAG(facet_code) OVER (
+                  PARTITION BY aq_code
+                  ORDER BY facet_code, question_id
+                ) AS prev_facet
+              FROM first_per_facet
+            ),
+            picked AS (
+              SELECT question_id, question_code, aq_code,
+                     chapter_id, question_type,
+                     response_options, renderer_config
+              FROM ranked_per_aq
+              WHERE aq_rn = 1
+                 OR (aq_rn = 2 AND facet_code != prev_facet)
             )
-            SELECT question_id, question_code, aq_code
-            FROM pick
-            ORDER BY aq_code, question_id;
+            SELECT question_id, question_code, aq_code,
+                   chapter_id, question_type,
+                   response_options, renderer_config
+            FROM picked
+            ORDER BY chapter_id NULLS LAST, aq_code, question_id;
             """
-        )
+        ),
+        {"pool_id": pool_id}
     ).fetchall()
 
-    picked = [{"question_id": int(r[0]), "question_code": str(r[1]), "aq_code": str(r[2])} for r in rows]
+    picked = [
+        {
+            "question_id":    int(r[0]),
+            "question_code":  str(r[1]),
+            "aq_code":        str(r[2]),
+            "chapter_id":     int(r[3]) if r[3] is not None else None,
+            "question_type":  str(r[4]) if r[4] else "likert",
+            "response_options": r[5],
+            "renderer_config":  r[6],
+        }
+        for r in rows
+    ]
 
     if len(picked) != 50:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Sampler failed: expected 50 questions, got {len(picked)}",
+            detail=f"Sampler failed: expected 50 questions, got {len(picked)}. "
+                   f"Pool={pool_id}, attempt={attempt_number}",
         )
 
     return picked
@@ -518,8 +588,9 @@ def create_assessment(
         current_user_id=current_user.id,
     )
 
-    # 3) Pick + persist 75 AQ-balanced questions
-    picked = _sample_questions_v1(db=db)
+    # 3) Pick + persist 50 AQ-balanced questions (pool rotation A/B/C)
+    attempt_number = _get_attempt_number(db=db, user_id=current_user.id)
+    picked = _sample_questions_v1(db=db, attempt_number=attempt_number)
     _persist_assessment_questions(
         db=db,
         assessment_id=assessment.id,
@@ -1379,6 +1450,10 @@ def get_assessment_questions(
                 "skill_id": q.skill_id,
                 "question_text": text_in_lang,
                 "facet_tags": facet_tags_by_qid.get(q.id, []),
+                "chapter_id": getattr(q, "chapter_id", None),
+                "question_type": getattr(q, "question_type", "likert") or "likert",
+                "response_options": getattr(q, "response_options", None),
+                "renderer_config": getattr(q, "renderer_config", None),
             }
         )
 
