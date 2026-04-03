@@ -1724,6 +1724,40 @@ def generate_result(assessment_id: int, student_id: int) -> None:
 )
 
 # ----------------------------------------------------------
+#  Context Profile GET
+# ----------------------------------------------------------
+@router.get(
+    "/{assessment_id}/context-profile",
+    summary="Get Context Profile for an assessment",
+)
+def get_context_profile(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    assessment = db.query(models.Assessment).get(assessment_id)
+    if not assessment or assessment.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    row = (
+        db.query(models.ContextProfile)
+        .filter(models.ContextProfile.assessment_id == assessment_id)
+        .first()
+    )
+
+    if not row:
+        return {}
+
+    return {
+        "education_board": row.education_board,
+        "support_level": row.support_level,
+        "resource_access": row.resource_access,
+        "ses_band": row.ses_band,
+        "cps_score": row.cps_score,
+    }
+
+
+# ----------------------------------------------------------
 #  Context Profile Update (CPS) — Updatable fields
 # ----------------------------------------------------------
 @router.put(
