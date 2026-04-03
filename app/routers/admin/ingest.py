@@ -2061,3 +2061,316 @@ async def upload_skill_aliases(
         "skipped": skipped,
         "warnings": warnings,
     }
+
+
+# ============================================================
+# Sprint1. UPLOAD CAREER → STUDENT SKILL WEIGHTS
+# ============================================================
+# Purpose: Bulk upload career × student-skill weight matrix from master sheet CSV
+# Input:   CSV — columns: Profession, Cluster, <24 student skill columns>
+# Writes:  career_student_skill (weight), careers.cluster
+# Idempotent: Yes — upsert on conflict
+
+_VALID_STUDENT_SKILLS = {
+    "Critical Thinking & Problem Solving",
+    "Communication Skills",
+    "Collaboration & Teamwork",
+    "Digital Literacy",
+    "Adaptability & Flexibility",
+    "Research Skills",
+    "Creativity & Innovation",
+    "Financial Literacy",
+    "Time Management",
+    "Self-Awareness & Emotional Intelligence",
+    "Leadership Skills",
+    "Decision-Making",
+    "Coping with Stress & Resilience",
+    "Social & Cross-Cultural Skills",
+    "Information Literacy",
+    "Media Literacy",
+    "Technology Literacy",
+    "Initiative",
+    "Productivity",
+    "Ethical Reasoning",
+    "Civic Literacy",
+    "Cultural Literacy",
+    "Curiosity",
+    "Grit & Self-Direction",
+}
+
+
+@router.post(
+    "/upload-career-student-skill-weights",
+    summary="Sprint1: Bulk upload Career -> Student Skill weights from master sheet CSV",
+)
+async def upload_career_student_skill_weights(
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """
+    Sprint1:
+    - CSV headers: Profession, Cluster, <24 student skill columns>
+    - Looks up career by title (exact match on careers.title)
+    - Upserts non-zero weights into career_student_skill
+    - Updates careers.cluster from the Cluster column
+    - dry_run=true validates + counts without writing
+    """
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+
+    raw = await file.read()
+    try:
+        text_csv = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text_csv = raw.decode("utf-16")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Unable to decode CSV. Save as UTF-8.")
+
+    if not text_csv.strip():
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+
+    reader = csv.DictReader(io.StringIO(text_csv))
+    headers = list(reader.fieldnames or [])
+
+    if "Profession" not in headers:
+        raise HTTPException(status_code=400, detail="CSV must have a 'Profession' column")
+    if "Cluster" not in headers:
+        raise HTTPException(status_code=400, detail="CSV must have a 'Cluster' column")
+
+    skill_cols = [h for h in headers if h not in ("Profession", "Cluster")]
+    invalid_skills = [s for s in skill_cols if s not in _VALID_STUDENT_SKILLS]
+    if invalid_skills:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "error": "Unknown student skill columns", "invalid": invalid_skills},
+        )
+
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CSV has headers but no data rows")
+
+    errors = []
+    careers_updated = 0
+    weights_upserted = 0
+    weights_skipped = 0
+
+    for line_no, r in enumerate(rows, start=2):
+        profession = (r.get("Profession") or "").strip()
+        cluster_val = (r.get("Cluster") or "").strip()
+
+        if not profession:
+            errors.append({"row": line_no, "error": "Profession is empty"})
+            continue
+
+        career = db.execute(
+            text("SELECT id FROM careers WHERE title = :t LIMIT 1"),
+            {"t": profession},
+        ).first()
+
+        if not career:
+            errors.append({"row": line_no, "error": f"Career not found: {profession!r}"})
+            continue
+
+        career_id = career[0]
+
+        if cluster_val and not dry_run:
+            db.execute(
+                text("UPDATE careers SET cluster = :c WHERE id = :id"),
+                {"c": cluster_val, "id": career_id},
+            )
+
+        for skill_col in skill_cols:
+            raw_w = (r.get(skill_col) or "").strip()
+            if not raw_w:
+                continue
+            try:
+                weight = float(raw_w)
+            except ValueError:
+                errors.append({"row": line_no, "error": f"Non-numeric weight for skill {skill_col!r}: {raw_w!r}"})
+                continue
+
+            if weight == 0.0:
+                weights_skipped += 1
+                continue
+
+            if not dry_run:
+                db.execute(
+                    text("""
+                        INSERT INTO career_student_skill (career_id, student_skill, weight)
+                        VALUES (:cid, :skill, :weight)
+                        ON CONFLICT (career_id, student_skill)
+                        DO UPDATE SET weight = EXCLUDED.weight
+                    """),
+                    {"cid": career_id, "skill": skill_col, "weight": weight},
+                )
+            weights_upserted += 1
+
+        careers_updated += 1
+
+    if errors and not dry_run:
+        db.rollback()
+        raise HTTPException(status_code=400, detail={"ok": False, "errors": errors})
+
+    if not dry_run:
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"DB error: {str(e)}")
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "careers_updated": careers_updated,
+        "weights_upserted": weights_upserted,
+        "weights_skipped_zero": weights_skipped,
+        "errors": errors,
+    }
+
+
+# ============================================================
+# Sprint1. UPLOAD AQ → STUDENT SKILL WEIGHTS
+# ============================================================
+# Purpose: Upload AQ-to-student-skill weight mapping from master sheet
+# Input:   CSV — columns: aq_id, aq_name, student_skill_name, weight
+# Writes:  aq_student_skill_weight (sums aliases mapping to same student_skill)
+# Idempotent: Yes — upsert on conflict
+
+_AQ_SKILL_TO_STUDENT_SKILL = {
+    "Abstract Thinking":          "Creativity & Innovation",
+    "Adaptability":               "Adaptability & Flexibility",
+    "Analytical Reasoning":       "Critical Thinking & Problem Solving",
+    "Collaboration":              "Collaboration & Teamwork",
+    "Communication":              "Communication Skills",
+    "Confidence / Self-Efficacy": "Initiative",
+    "Creative Expression":        "Creativity & Innovation",
+    "Critical Thinking":          "Critical Thinking & Problem Solving",
+    "Curiosity & Inquiry":        "Curiosity",
+    "Digital Literacy":           "Digital Literacy",
+    "Emotional Regulation":       "Coping with Stress & Resilience",
+    "Empathy":                    "Social & Cross-Cultural Skills",
+    "Ethical Judgment":           "Ethical Reasoning",
+    "Focus & Attention Control":  "Productivity",
+    "Goal Orientation":           "Grit & Self-Direction",
+    "Grit & Perseverance":        "Grit & Self-Direction",
+    "Information Literacy":       "Information Literacy",
+    "Learning Agility":           "Adaptability & Flexibility",
+    "Logical Reasoning":          "Critical Thinking & Problem Solving",
+    "Numerical Comfort":          "Financial Literacy",
+    "Practical Problem Solving":  "Critical Thinking & Problem Solving",
+    "Self-Discipline":            "Productivity",
+    "Systems Thinking":           "Decision-Making",
+    "Time Management":            "Time Management",
+}
+
+
+@router.post(
+    "/upload-aq-student-skill-weights",
+    summary="Sprint1: Bulk upload AQ -> Student Skill weights from master sheet CSV",
+)
+async def upload_aq_student_skill_weights(
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_active_user),
+):
+    """
+    Sprint1:
+    - CSV headers (exact): aq_id, aq_name, student_skill_name, weight
+    - Maps student_skill_name aliases via AQ_SKILL_TO_STUDENT_SKILL
+    - Groups by (aq_id, resolved_student_skill) and sums weights
+      (handles multiple aliases mapping to same student skill)
+    - Upserts into aq_student_skill_weight
+    - dry_run=true validates + counts without writing
+    """
+    if not (file.filename or "").lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+
+    raw = await file.read()
+    try:
+        text_csv = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text_csv = raw.decode("utf-16")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Unable to decode CSV. Save as UTF-8.")
+
+    if not text_csv.strip():
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+
+    reader = csv.DictReader(io.StringIO(text_csv))
+    expected = ["aq_id", "aq_name", "student_skill_name", "weight"]
+    actual = list(reader.fieldnames or [])
+    if actual != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Header mismatch. Expected {expected}, got {actual}",
+        )
+
+    rows_raw = list(reader)
+    if not rows_raw:
+        raise HTTPException(status_code=400, detail="CSV has no data rows")
+
+    errors = []
+    # Aggregate: (aq_code, student_skill) -> summed weight
+    agg: dict = {}
+    unmapped_skills: set = set()
+
+    for line_no, r in enumerate(rows_raw, start=2):
+        aq_code = (r.get("aq_id") or "").strip()
+        alias   = (r.get("student_skill_name") or "").strip()
+        raw_w   = (r.get("weight") or "").strip()
+
+        if not aq_code or not alias or not raw_w:
+            errors.append({"row": line_no, "error": "aq_id, student_skill_name, weight are all required"})
+            continue
+
+        try:
+            weight = float(raw_w)
+        except ValueError:
+            errors.append({"row": line_no, "error": f"Non-numeric weight: {raw_w!r}"})
+            continue
+
+        resolved = _AQ_SKILL_TO_STUDENT_SKILL.get(alias)
+        if resolved is None:
+            unmapped_skills.add(alias)
+            errors.append({"row": line_no, "error": f"Unknown student_skill_name alias: {alias!r}"})
+            continue
+
+        key = (aq_code, resolved)
+        agg[key] = agg.get(key, 0.0) + weight
+
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "errors": errors, "unmapped_skills": list(unmapped_skills)},
+        )
+
+    if not dry_run:
+        for (aq_code, student_skill), weight in agg.items():
+            db.execute(
+                text("""
+                    INSERT INTO aq_student_skill_weight (aq_code, student_skill, weight)
+                    VALUES (:aq, :skill, :weight)
+                    ON CONFLICT (aq_code, student_skill)
+                    DO UPDATE SET weight = EXCLUDED.weight
+                """),
+                {"aq": aq_code, "skill": student_skill, "weight": weight},
+            )
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"DB error: {str(e)}")
+
+    aq_codes = sorted({k[0] for k in agg})
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "uploaded": len(rows_raw),
+        "aq_codes": aq_codes,
+        "rows_written": len(agg),
+    }

@@ -1071,6 +1071,7 @@ def submit_assessment(
             if student_profile:
                 raw_careers = compute_careers_for_student(
                     student_id=student_profile.id,
+                    assessment_id=assessment_id,
                     db=db,
                 )
                 raw_payload = {
@@ -1115,6 +1116,7 @@ def submit_assessment(
             if student_profile:
                 raw_careers = compute_careers_for_student(
                     student_id=student_profile.id,
+                    assessment_id=assessment_id,
                     db=db,
                 )
                 raw_payload = {
@@ -1652,6 +1654,7 @@ def generate_result(assessment_id: int, student_id: int) -> None:
             if student_profile:
                 raw_careers = compute_careers_for_student(
                     student_id=student_profile.id,
+                    assessment_id=assessment_id,
                     db=db,
                 )
                 raw_payload = {

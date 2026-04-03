@@ -143,6 +143,9 @@ class Skill(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
     display_name = Column(String(200), nullable=True)
+    # Sprint1: full canonical Student Skill name (maps short DB name → master sheet name)
+    student_skill_name = Column(String(128), nullable=True)
+
 class SkillAlias(Base):
     """
     PR42: Alias → Canonical mapping used during ingestion.
@@ -226,6 +229,8 @@ class Career(Base):
     description = Column(String, nullable=True)
     career_code = Column(String, unique=True, nullable=False)
     cluster_id = Column(Integer, ForeignKey("career_clusters.id"), nullable=True)
+    # Sprint1: denormalised cluster label (populated from master sheet CSV upload)
+    cluster = Column(String(64), nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
@@ -1186,4 +1191,50 @@ class CareerAQWeight(Base):
                          name="uq_career_aq_weight_career_aq_round"),
         Index("ix_career_aq_weights_career_id",    "career_id"),
         Index("ix_career_aq_weights_is_promoted",  "is_promoted"),
+    )
+
+
+# =========================================================
+# Sprint1: Career → Student Skill weights (new scoring layer)
+# =========================================================
+
+class CareerStudentSkill(Base):
+    """
+    Career ↔ Student Skill weight mapping (Sprint1 scoring rebuild).
+
+    Replaces the broken career_keyskill_association chain for scoring.
+    One row per (career_id, student_skill) pair.
+    weight is a percentage (0–100); all weights for a career should sum to 100.
+
+    Populated via POST /v1/admin/upload-career-student-skill-weights
+    """
+    __tablename__ = "career_student_skill"
+
+    career_id     = Column(Integer, ForeignKey("careers.id"), primary_key=True, nullable=False)
+    student_skill = Column(String(128), primary_key=True, nullable=False)
+    weight        = Column(Numeric(6, 2), nullable=False, default=0)
+
+    career = relationship("Career", backref="student_skill_weights")
+
+    __table_args__ = (
+        Index("ix_career_student_skill_career", "career_id"),
+        Index("ix_career_student_skill_skill",  "student_skill"),
+    )
+
+
+class AQStudentSkillWeight(Base):
+    """
+    AQ → Student Skill weight mapping (Sprint1 scoring rebuild).
+
+    Maps each AQ code to student skill names with fractional weights.
+    Populated via POST /v1/admin/upload-aq-student-skill-weights
+    """
+    __tablename__ = "aq_student_skill_weight"
+
+    aq_code       = Column(String(8),   primary_key=True, nullable=False)
+    student_skill = Column(String(128), primary_key=True, nullable=False)
+    weight        = Column(Numeric(8, 6), nullable=False)
+
+    __table_args__ = (
+        Index("ix_aq_student_skill_weight_aq", "aq_code"),
     )
