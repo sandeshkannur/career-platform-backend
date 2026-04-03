@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app import models
-from app.services.scoring import compute_career_scores
+from app.services.scoring import compute_career_scores, compute_career_scores_v2
 
 
 def compute_careers_for_student(
     student_id: int,
     db: Session,
     *,
+    assessment_id: int | None = None,
     limit: int = 368,
     include_explainability: bool = True,
     include_keyskills: bool = True,
@@ -34,8 +35,21 @@ def compute_careers_for_student(
     if not keyskill_rows:
         raise HTTPException(status_code=404, detail="No keyskills found for this student")
 
-    # 2) Compute career scores (deterministic)
-    career_scores = compute_career_scores(db, student_id)
+    # 2) Compute career scores — v2 if career_student_skill has data and
+    #    assessment_id is available, otherwise fall back to v1.
+    use_v2 = False
+    if assessment_id is not None:
+        has_css = db.execute(text("SELECT 1 FROM career_student_skill LIMIT 1")).first()
+        use_v2 = has_css is not None
+
+    if use_v2:
+        career_scores = compute_career_scores_v2(
+            student_id=student_id,
+            assessment_id=assessment_id,
+            db=db,
+        )
+    else:
+        career_scores = compute_career_scores(db, student_id)
     if not career_scores:
         raise HTTPException(
             status_code=404,
