@@ -1867,3 +1867,60 @@ def create_context_profile(
     db.commit()
     db.refresh(row)
     return row
+
+
+# ----------------------------------------------------------
+#  Admin: force-refresh question pool for an assessment
+# ----------------------------------------------------------
+@router.post(
+    "/{assessment_id}/admin/refresh-questions",
+    summary="[Admin] Clear and re-sample question pool for an existing assessment",
+)
+def admin_refresh_assessment_questions(
+    assessment_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Clears the persisted assessment_questions rows and re-runs _sample_questions_v1
+    so that in-progress assessments pick up the latest question selection logic
+    (e.g. non-likert preference fix).
+
+    Admin only. Destructive to the question pool — any already-submitted responses
+    that reference questions no longer in the new pool are left intact (append-only
+    responses table), but the pool membership gate will reject stale question_ids
+    on the next submit.
+    """
+    if getattr(current_user, "role", None) != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    assessment = db.query(models.Assessment).get(assessment_id)
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # 1) Delete existing pool rows
+    deleted = (
+        db.query(models.AssessmentQuestion)
+        .filter(models.AssessmentQuestion.assessment_id == assessment_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+
+    # 2) Re-sample using current logic
+    attempt_number = _get_attempt_number(db=db, user_id=assessment.user_id)
+    picked = _sample_questions_v1(db=db, attempt_number=attempt_number)
+
+    # 3) Persist fresh rows (idempotency guard now passes — rows were deleted)
+    _persist_assessment_questions(
+        db=db,
+        assessment_id=assessment_id,
+        assessment_version=assessment.assessment_version,
+        picked=picked,
+    )
+
+    return {
+        "ok": True,
+        "assessment_id": assessment_id,
+        "deleted_rows": deleted,
+        "new_pool_size": len(picked),
+    }
