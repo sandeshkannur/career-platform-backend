@@ -306,21 +306,23 @@ def _sample_questions_v1(db: Session, attempt_number: int = 0) -> List[Dict]:
                 AND (q.pool_id = :pool_id OR q.pool_id IS NULL)
             ),
             first_per_facet AS (
-              SELECT * FROM candidates WHERE facet_rn = 1
+              SELECT *,
+                CASE WHEN question_type != 'likert' THEN 0 ELSE 1 END AS is_likert_facet
+              FROM candidates WHERE facet_rn = 1
             ),
             ranked_per_aq AS (
               SELECT *,
                 ROW_NUMBER() OVER (
                   PARTITION BY aq_code
-                  ORDER BY facet_code, question_id
+                  ORDER BY is_likert_facet, facet_code, question_id
                 ) AS aq_rn,
                 LAG(facet_code) OVER (
                   PARTITION BY aq_code
-                  ORDER BY facet_code, question_id
+                  ORDER BY is_likert_facet, facet_code, question_id
                 ) AS prev_facet,
                 LAG(question_type) OVER (
                   PARTITION BY aq_code
-                  ORDER BY facet_code, question_id
+                  ORDER BY is_likert_facet, facet_code, question_id
                 ) AS prev_question_type
               FROM first_per_facet
             ),
