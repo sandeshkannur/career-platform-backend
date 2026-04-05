@@ -5,6 +5,61 @@ from sqlalchemy import text
 
 from app import models
 from app.services.scoring import compute_career_scores, compute_career_scores_v2
+from app.services.cluster_reranker import spread_and_select
+
+
+def _get_content(db: Session, career_ids: list[int], lang: str) -> dict[int, dict]:
+    """
+    Fetch career_content rows for given career_ids with lang fallback to 'en'.
+    Uses DISTINCT ON to return one row per career_id, preferring requested lang.
+    Returns {career_id: {field: value, ..., lang_used: str}}
+    """
+    if not career_ids:
+        return {}
+
+    rows = db.execute(
+        text("""
+            SELECT DISTINCT ON (career_id)
+                career_id,
+                lang,
+                prestige_title,
+                domain_category,
+                description,
+                indian_job_title,
+                top_tier_potential,
+                parallel_path,
+                pathway_step1,
+                pathway_step2,
+                pathway_step3,
+                pathway_accessible,
+                pathway_premium,
+                pathway_earn_learn
+            FROM career_content
+            WHERE career_id = ANY(:career_ids)
+              AND lang IN (:lang, 'en')
+            ORDER BY career_id, CASE WHEN lang = :lang THEN 0 ELSE 1 END
+        """),
+        {"career_ids": career_ids, "lang": lang},
+    ).mappings().all()
+
+    return {
+        r["career_id"]: {
+            "prestige_title": r["prestige_title"],
+            "domain_category": r["domain_category"],
+            "description": r["description"],
+            "indian_job_title": r["indian_job_title"],
+            "top_tier_potential": r["top_tier_potential"],
+            "parallel_path": r["parallel_path"],
+            "pathway_step1": r["pathway_step1"],
+            "pathway_step2": r["pathway_step2"],
+            "pathway_step3": r["pathway_step3"],
+            "pathway_accessible": r["pathway_accessible"],
+            "pathway_premium": r["pathway_premium"],
+            "pathway_earn_learn": r["pathway_earn_learn"],
+            "lang_used": r["lang"],
+        }
+        for r in rows
+    }
 
 
 def compute_careers_for_student(
@@ -16,6 +71,7 @@ def compute_careers_for_student(
     include_explainability: bool = True,
     include_keyskills: bool = True,
     include_clusters: bool = True,
+    lang: str = "en",
 ) -> List[Dict[str, Any]]:
     """
     Single source of truth for career computation.
@@ -114,7 +170,10 @@ def compute_careers_for_student(
     )
     career_by_id = {c.id: c for c in careers}
 
-    # 6) Build stable output shape (matches what you already persist/return)
+    # 6) Load career_content with lang fallback
+    content_by_career = _get_content(db, top_career_ids, lang)
+
+    # 7) Build stable output shape
     out: List[Dict[str, Any]] = []
 
     for cid, score in top:
@@ -122,11 +181,13 @@ def compute_careers_for_student(
         if not c:
             continue
 
+        content = content_by_career.get(cid, {})
+
         obj: Dict[str, Any] = {
             "career_id": c.id,
             "career_code": c.career_code,
             "title": c.title,
-            "description": c.description,
+            "description": content.get("description") or c.description,
         }
 
         if include_clusters:
@@ -136,17 +197,39 @@ def compute_careers_for_student(
         obj["score"] = score
         # Compute fit_band_key based on score (student-safe label, no numbers)
         if score >= 90:
-            fit_band_key = 'high_potential'
+            fit_band_key = "high_potential"
         elif score >= 75:
-            fit_band_key = 'strong'
+            fit_band_key = "strong"
         elif score >= 60:
-            fit_band_key = 'promising'
+            fit_band_key = "promising"
         elif score >= 45:
-            fit_band_key = 'developing'
+            fit_band_key = "developing"
         else:
-            fit_band_key = 'exploring'
-        obj['fit_band_key'] = fit_band_key
+            fit_band_key = "exploring"
+        obj["fit_band_key"] = fit_band_key
 
+        # Career content fields (lang-aware)
+        obj["prestige_title"]    = content.get("prestige_title")
+        obj["domain_category"]   = content.get("domain_category")
+        obj["indian_job_title"]  = content.get("indian_job_title")
+        obj["top_tier_potential"] = content.get("top_tier_potential")
+        obj["parallel_path"]     = content.get("parallel_path")
+        obj["pathway_step1"]     = content.get("pathway_step1")
+        obj["pathway_step2"]     = content.get("pathway_step2")
+        obj["pathway_step3"]     = content.get("pathway_step3")
+        obj["pathway_accessible"] = content.get("pathway_accessible")
+        obj["pathway_premium"]   = content.get("pathway_premium")
+        obj["pathway_earn_learn"] = content.get("pathway_earn_learn")
+        obj["lang_used"]         = content.get("lang_used", "en")
+
+        # Salary and market fields from careers table
+        obj["salary_entry_inr"]    = getattr(c, "salary_entry_inr", None)
+        obj["salary_mid_inr"]      = getattr(c, "salary_mid_inr", None)
+        obj["salary_peak_inr"]     = getattr(c, "salary_peak_inr", None)
+        obj["industry_growth_pct"] = getattr(c, "industry_growth_pct", None)
+        obj["automation_risk"]     = getattr(c, "automation_risk", None)
+        obj["future_outlook"]      = getattr(c, "future_outlook", None)
+        obj["recommended_stream"]  = getattr(c, "recommended_stream", None)
 
         if include_keyskills:
             obj["matched_keyskills"] = contrib_by_career.get(c.id, [])
@@ -178,5 +261,7 @@ def compute_careers_for_student(
             ]
 
         out.append(obj)
+
+    out = spread_and_select(out, num_clusters_in_first_pass=5, total_results=limit)
 
     return out
