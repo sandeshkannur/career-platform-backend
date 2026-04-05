@@ -17,6 +17,8 @@ def _get_content(db: Session, career_ids: list[int], lang: str) -> dict[int, dic
     if not career_ids:
         return {}
 
+    langs = [lang, "en"] if lang != "en" else ["en"]
+
     rows = db.execute(
         text("""
             SELECT DISTINCT ON (career_id)
@@ -36,27 +38,28 @@ def _get_content(db: Session, career_ids: list[int], lang: str) -> dict[int, dic
                 pathway_earn_learn
             FROM career_content
             WHERE career_id = ANY(:career_ids)
-              AND lang IN (:lang, 'en')
-            ORDER BY career_id, CASE WHEN lang = :lang THEN 0 ELSE 1 END
+              AND lang = ANY(:langs)
+            ORDER BY career_id,
+                     CASE WHEN lang = :preferred_lang THEN 0 ELSE 1 END
         """),
-        {"career_ids": career_ids, "lang": lang},
+        {"career_ids": career_ids, "langs": langs, "preferred_lang": lang},
     ).mappings().all()
 
     return {
         r["career_id"]: {
-            "prestige_title": r["prestige_title"],
-            "domain_category": r["domain_category"],
-            "description": r["description"],
-            "indian_job_title": r["indian_job_title"],
+            "prestige_title":     r["prestige_title"],
+            "domain_category":    r["domain_category"],
+            "description":        r["description"],
+            "indian_job_title":   r["indian_job_title"],
             "top_tier_potential": r["top_tier_potential"],
-            "parallel_path": r["parallel_path"],
-            "pathway_step1": r["pathway_step1"],
-            "pathway_step2": r["pathway_step2"],
-            "pathway_step3": r["pathway_step3"],
+            "parallel_path":      r["parallel_path"],
+            "pathway_step1":      r["pathway_step1"],
+            "pathway_step2":      r["pathway_step2"],
+            "pathway_step3":      r["pathway_step3"],
             "pathway_accessible": r["pathway_accessible"],
-            "pathway_premium": r["pathway_premium"],
+            "pathway_premium":    r["pathway_premium"],
             "pathway_earn_learn": r["pathway_earn_learn"],
-            "lang_used": r["lang"],
+            "lang_used":          r["lang"],
         }
         for r in rows
     }
