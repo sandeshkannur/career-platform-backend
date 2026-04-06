@@ -229,8 +229,13 @@ class Career(Base):
     description = Column(String, nullable=True)
     career_code = Column(String, unique=True, nullable=False)
     cluster_id = Column(Integer, ForeignKey("career_clusters.id"), nullable=True)
-    # Sprint1: denormalised cluster label (populated from master sheet CSV upload)
-    cluster = Column(String(64), nullable=True)
+    salary_entry_inr    = Column(Integer, nullable=True)
+    salary_mid_inr      = Column(Integer, nullable=True)
+    salary_peak_inr     = Column(Integer, nullable=True)
+    industry_growth_pct = Column(Integer, nullable=True)
+    automation_risk     = Column(String(20), nullable=True)
+    future_outlook      = Column(String(20), nullable=True)
+    recommended_stream  = Column(String(50), nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
@@ -238,6 +243,36 @@ class Career(Base):
         secondary=career_keyskill_association,
         back_populates="careers",
     )
+    content = relationship("CareerContent", back_populates="career", lazy="select")
+
+
+class CareerContent(Base):
+    """
+    Language-aware career content CMS.
+    career_id + lang = unique key (enforced by DB UNIQUE constraint).
+    Supported langs: en, kn, hi, ta, te
+    """
+    __tablename__ = "career_content"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    career_id        = Column(Integer, ForeignKey("careers.id", ondelete="CASCADE"), nullable=False)
+    lang             = Column(String(5), nullable=False, default="en")
+    prestige_title   = Column(Text, nullable=True)
+    domain_category  = Column(Text, nullable=True)
+    description      = Column(Text, nullable=True)
+    indian_job_title = Column(Text, nullable=True)
+    top_tier_potential  = Column(Text, nullable=True)
+    parallel_path       = Column(Text, nullable=True)
+    pathway_step1       = Column(Text, nullable=True)
+    pathway_step2       = Column(Text, nullable=True)
+    pathway_step3       = Column(Text, nullable=True)
+    pathway_accessible  = Column(Text, nullable=True)
+    pathway_premium     = Column(Text, nullable=True)
+    pathway_earn_learn  = Column(Text, nullable=True)
+    created_at       = Column(DateTime, default=func.now())
+    updated_at       = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    career = relationship("Career", back_populates="content")
 
 
 class KeySkill(Base):
