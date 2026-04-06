@@ -1075,6 +1075,7 @@ def submit_assessment(
                     student_id=student_profile.id,
                     assessment_id=assessment_id,
                     db=db,
+                    limit=9,
                 )
                 raw_payload = {
                     "student_id": student_profile.id,
@@ -1120,6 +1121,7 @@ def submit_assessment(
                     student_id=student_profile.id,
                     assessment_id=assessment_id,
                     db=db,
+                    limit=9,
                 )
                 raw_payload = {
                     "student_id": student_profile.id,
@@ -1658,6 +1660,7 @@ def generate_result(assessment_id: int, student_id: int) -> None:
                     student_id=student_profile.id,
                     assessment_id=assessment_id,
                     db=db,
+                    limit=9,
                 )
                 raw_payload = {
                     "student_id": student_profile.id,
