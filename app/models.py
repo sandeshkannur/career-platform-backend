@@ -1274,3 +1274,29 @@ class AQStudentSkillWeight(Base):
     __table_args__ = (
         Index("ix_aq_student_skill_weight_aq", "aq_code"),
     )
+
+
+class InterestInventoryResponse(Base):
+    """
+    Stores a student's interest inventory answers and derived cluster boosts.
+
+    One row per student per inventory version. On retake, the existing row
+    is updated (upsert), not duplicated — we keep the latest response only.
+
+    answers: JSON dict  {"q1": "a", "q2": "b", "q3": "c", ...}
+    cluster_boosts: JSON dict  {"Business": 0.15, "STEM": 0.30, ...}
+    """
+    __tablename__ = 'interest_inventory_responses'
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    student_id        = Column(Integer, ForeignKey('students.id', ondelete='CASCADE'),
+                               nullable=False, index=True)
+    inventory_version = Column(String(20), nullable=False, default='v1')
+    answers           = Column(JSON_TYPE, nullable=False)
+    cluster_boosts    = Column(JSON_TYPE, nullable=True)
+    lang              = Column(String(10), nullable=False, default='en')
+    submitted_at      = Column(DateTime, nullable=False, default=func.now())
+    updated_at        = Column(DateTime, nullable=False, default=func.now(),
+                               onupdate=func.now())
+
+    student = relationship('Student', backref='interest_responses')

@@ -161,6 +161,9 @@ def create_app() -> FastAPI:
     # ADM-B03: Chapter content delivery (aggregated SME answers per chapter)
     from app.routers.chapter_content import router as chapter_content_router
 
+    # Interest Inventory (Layer 2 scoring — cluster boost signals)
+    from app.routers.interest_inventory import router as interest_inventory_router
+
     # --- Create a single /v1 aggregator router ---
     api_v1 = APIRouter(prefix="/v1")
 
@@ -214,6 +217,11 @@ def create_app() -> FastAPI:
     api_v1.include_router(reports_router, prefix="", tags=["Reports"])                          # → /v1/reports/*
 
     api_v1.include_router(content.router, prefix="/content", tags=["Content"])
+    api_v1.include_router(
+        interest_inventory_router,
+        prefix="",
+        tags=["Interest Inventory"],
+    )
 
     # --- Mount /v1 on app ---
     app.include_router(api_v1)
