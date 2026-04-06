@@ -85,6 +85,28 @@ def _compute_recommendations_payload(
 compute_recommendations_payload = _compute_recommendations_payload
 
 
+# ─── Admin endpoint — MUST be defined before /{student_id} wildcard ──────────
+
+@router.get("/admin/{student_id}")
+def get_recommendations_admin(
+    student_id: int,
+    lang: str = Query("en"),
+    limit: int = Query(9),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin", "counsellor")),
+):
+    """
+    Admin: live recompute with raw scores visible (not sanitized).
+    Shows exact scores so you can verify interest boost is working.
+    """
+    return _compute_recommendations_payload(
+        student_id=student_id,
+        db=db,
+        limit=limit,
+        lang=lang,
+    )
+
+
 # ─── Student endpoint ─────────────────────────────────────────────────────────
 
 @router.get("/{student_id}")
@@ -120,25 +142,3 @@ def get_recommendations(
         lang=lang,
     )
     return project_student_safe(_sanitize_recommendations_payload(payload))
-
-
-# ─── Admin endpoint ───────────────────────────────────────────────────────────
-
-@router.get("/admin/{student_id}")
-def get_recommendations_admin(
-    student_id: int,
-    lang: str = Query("en"),
-    limit: int = Query(9),
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin", "counsellor")),
-):
-    """
-    Admin: live recompute with raw scores visible (not sanitized).
-    Shows exact scores so you can verify interest boost is working.
-    """
-    return _compute_recommendations_payload(
-        student_id=student_id,
-        db=db,
-        limit=limit,
-        lang=lang,
-    )
