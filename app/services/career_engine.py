@@ -65,6 +65,31 @@ def _get_content(db: Session, career_ids: list[int], lang: str) -> dict[int, dic
     }
 
 
+def _get_interest_boosts(db: Session, student_id: int) -> dict:
+    """
+    Fetch cluster boost values from the student's interest inventory response.
+    Returns empty dict if student has not completed the interest inventory.
+
+    Format: {"Business": 0.15, "STEM": 0.30, "Health Sci": 0.15, ...}
+    Values represent additive multiplier (0.15 = +15% to career score)
+    """
+    try:
+        record = (
+            db.query(models.InterestInventoryResponse)
+            .filter(
+                models.InterestInventoryResponse.student_id == student_id,
+                models.InterestInventoryResponse.inventory_version == "v1",
+            )
+            .first()
+        )
+        if record and record.cluster_boosts:
+            return dict(record.cluster_boosts)
+    except Exception:
+        # Never let interest inventory errors block career recommendations
+        pass
+    return {}
+
+
 def compute_careers_for_student(
     student_id: int,
     db: Session,
@@ -115,11 +140,41 @@ def compute_careers_for_student(
             detail="No career scores could be computed for this student",
         )
 
-    # 3) Pick Top N careers by score (only >0)
+    # 3) Apply interest inventory boost to career scores (if available).
+    # Boost is applied BEFORE sorting so interest-aligned careers rise in ranking.
+    # Ranking uses boosted score; output stores original score (auditable, no inflation).
+    interest_boosts = _get_interest_boosts(db, student_id)
+
+    if interest_boosts:
+        # Pre-load cluster names for all scored careers in ONE query
+        career_ids_all = list(career_scores.keys())
+        cluster_rows = db.execute(
+            text("""
+                SELECT c.id, cc.name AS cluster_name
+                FROM careers c
+                LEFT JOIN career_clusters cc ON cc.id = c.cluster_id
+                WHERE c.id = ANY(:ids)
+            """),
+            {"ids": career_ids_all},
+        ).mappings().all()
+        career_cluster_map = {r["id"]: r["cluster_name"] for r in cluster_rows}
+
+        boosted_scores = {}
+        for cid, raw_score in career_scores.items():
+            cluster_name = career_cluster_map.get(cid)
+            boost = interest_boosts.get(cluster_name, 0.0) if cluster_name else 0.0
+            boosted_scores[cid] = raw_score * (1.0 + boost)
+        career_scores_for_ranking = boosted_scores
+    else:
+        career_scores_for_ranking = career_scores
+
+    # Pick Top N by boosted score, store original score in output
     top = [
-        (cid, s)
-        for cid, s in sorted(career_scores.items(), key=lambda x: x[1], reverse=True)
-        if s > 0
+        (cid, career_scores[cid])
+        for cid, _ in sorted(
+            career_scores_for_ranking.items(), key=lambda x: x[1], reverse=True
+        )
+        if career_scores[cid] > 0
     ][:limit]
     top_career_ids = [cid for cid, _ in top]
 
