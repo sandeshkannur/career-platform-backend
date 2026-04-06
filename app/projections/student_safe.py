@@ -56,6 +56,11 @@ _ALLOW_NUMERIC_KEYS = {
     "student_id",
     "assessment_id",
     "chapter_id",
+    # Salary and market data — career facts, not internal scoring values
+    "salary_entry_inr",
+    "salary_mid_inr",
+    "salary_peak_inr",
+    "industry_growth_pct",
 }
 
 
