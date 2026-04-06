@@ -8,50 +8,75 @@ top results, then fills remaining slots in score order.
 
 
 def spread_and_select(
-    ranked_careers: list[dict],
-    num_clusters_in_first_pass: int = 5,
-    total_results: int = 10,
+    scored_careers: list[dict],
+    total_results: int,
+    num_clusters_in_first_pass: int | None = None,
 ) -> list[dict]:
     """
-    Two-pass cluster diversity reranker.
+    Reorders a score-sorted career list to guarantee cluster diversity
+    WITHOUT pulling low-scoring careers just to fill cluster slots.
 
-    PASS 1 — Cluster spread:
-      Iterate ranked_careers (score descending). Add the first career seen
-      from each cluster until num_clusters_in_first_pass unique clusters are
-      represented, or the list is exhausted.
-
-    PASS 2 — Fill remaining slots:
-      Continue through the remainder (skipping already-added careers) in score
-      order until total_results is reached.
-
-    Score values are never modified — only ordering changes.
-    If len(ranked_careers) < total_results, all careers are returned.
+    Strategy:
+    - Only diversify across careers within 30 points of the top score
+    - Careers more than 30 points below top are never promoted for diversity
+    - After first-pass cluster selection, fill remaining slots in pure score order
     """
-    if not ranked_careers:
+    if not scored_careers:
         return []
 
-    seen_ids: set[int] = set()
-    pass1: list[dict] = []
-    seen_clusters: set = set()
+    total_results = min(total_results, len(scored_careers))
+    if total_results == 0:
+        return []
 
-    for career in ranked_careers:
-        if len(pass1) >= num_clusters_in_first_pass:
+    sorted_careers = sorted(
+        scored_careers, key=lambda x: x.get("score", 0), reverse=True
+    )
+
+    if total_results <= 1:
+        return sorted_careers[:total_results]
+
+    top_score = sorted_careers[0].get("score", 0)
+    DIVERSITY_THRESHOLD = 30  # only diversify within 30 pts of top score
+
+    seen_clusters = set()
+    first_pass = []
+    remainder = []
+
+    for c in sorted_careers:
+        cluster = c.get("cluster") or c.get("cluster_title") or "Unknown"
+        score = c.get("score", 0)
+        in_threshold = (top_score - score) <= DIVERSITY_THRESHOLD
+
+        if cluster not in seen_clusters and in_threshold:
+            seen_clusters.add(cluster)
+            first_pass.append(c)
+        else:
+            remainder.append(c)
+
+    # Cap first pass to num_clusters_in_first_pass if specified
+    if num_clusters_in_first_pass is not None:
+        cap = min(num_clusters_in_first_pass, len(first_pass), total_results)
+        if len(first_pass) > cap:
+            excess = first_pass[cap:]
+            first_pass = first_pass[:cap]
+            remainder = sorted(
+                excess + remainder,
+                key=lambda x: x.get("score", 0), reverse=True
+            )
+
+    # Fill remaining slots in pure score order
+    result = first_pass[:]
+    used_ids = {c.get("career_id") or c.get("career_code") for c in result}
+
+    for c in sorted_careers:
+        if len(result) >= total_results:
             break
-        cluster_id = career.get("cluster_id")
-        if cluster_id not in seen_clusters:
-            pass1.append(career)
-            seen_ids.add(career["career_id"])
-            seen_clusters.add(cluster_id)
+        cid = c.get("career_id") or c.get("career_code")
+        if cid not in used_ids:
+            result.append(c)
+            used_ids.add(cid)
 
-    # Pass 2 — fill remaining slots in original score order
-    pass2: list[dict] = []
-    for career in ranked_careers:
-        if len(pass1) + len(pass2) >= total_results:
-            break
-        if career["career_id"] not in seen_ids:
-            pass2.append(career)
-
-    return pass1 + pass2
+    return result[:total_results]
 
 
 if __name__ == "__main__":

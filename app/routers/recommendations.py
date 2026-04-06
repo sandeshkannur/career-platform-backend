@@ -32,7 +32,7 @@ def _compute_recommendations_payload(
     recommendations = compute_careers_for_student(
         student_id=student_id,
         db=db,
-        limit=3,
+        limit=9,
         lang=lang,
         include_explainability=True,
         include_keyskills=True,
@@ -66,6 +66,19 @@ def _sanitize_recommendations_payload(payload: dict) -> dict:
                 }:
                     continue
                 vv = strip_numeric(v)
+
+                # Salary and market fields are safe to show students
+                NUMERIC_WHITELIST = {
+                    "salary_entry_inr",
+                    "salary_mid_inr",
+                    "salary_peak_inr",
+                    "industry_growth_pct",
+                }
+                if key in NUMERIC_WHITELIST:
+                    cleaned[key] = vv
+                    continue
+
+                # If the value is numeric (int/float) or a list of numerics, drop it
                 if isinstance(vv, (int, float)):
                     continue
                 if isinstance(vv, list) and vv and all(
