@@ -52,6 +52,7 @@ class User(Base):
     tier = Column(String, nullable=False, default="free")
     guardian_email = Column(String, nullable=True)
     role = Column(String, nullable=False, default="student")
+    subscription_tier = Column(String(20), nullable=True, default="free")
 
 
 class Student(Base):
