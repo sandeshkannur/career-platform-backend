@@ -52,6 +52,7 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy new backend version" \
+            --timeout-seconds 300 \
             --parameters 'commands=[
               "set -e",
               "echo ===== Logging into ECR =====",
@@ -84,17 +85,37 @@ jobs:
 
           echo "SSM Command ID: $COMMAND_ID"
 
-          aws ssm wait command-executed --cli-read-timeout 300 \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
-            --region "${{ secrets.AWS_REGION }}"
+          # Poll manually with 5-minute budget (20 × 15s).
+          # aws ssm wait command-executed uses a hardcoded waiter (~100s max)
+          # which fires before docker pull + restart finishes on cold pulls.
+          for i in $(seq 1 20); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "${{ secrets.AWS_REGION }}" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")
 
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
-            --region "${{ secrets.AWS_REGION }}" \
-            --query 'Status' \
-            --output text)
+            echo "Attempt $i/20 — Status: $STATUS"
 
-          echo "Deployment status: $STATUS"
-          test "$STATUS" = "Success"
+            if [ "$STATUS" = "Success" ]; then
+              echo "Deploy succeeded"
+              break
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              aws ssm get-command-invocation \
+                --region "${{ secrets.AWS_REGION }}" \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+                --query "StandardErrorContent" \
+                --output text
+              echo "Deploy failed with status: $STATUS"
+              exit 1
+            fi
+
+            if [ "$i" = "20" ]; then
+              echo "Deploy timed out after 5 minutes"
+              exit 1
+            fi
+
+            sleep 15
+          done
