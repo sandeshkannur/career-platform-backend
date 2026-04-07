@@ -168,14 +168,57 @@ def compute_careers_for_student(
     else:
         career_scores_for_ranking = career_scores
 
-    # Pick Top N by boosted score, store original score in output
-    top = [
-        (cid, career_scores[cid])
+    # ── Step A: sort all careers by boosted score ─────────────────────────
+    all_sorted = [
+        (cid, career_scores[cid])          # store original score in output
         for cid, _ in sorted(
             career_scores_for_ranking.items(), key=lambda x: x[1], reverse=True
         )
         if career_scores[cid] > 0
-    ][:limit]
+    ]
+
+    # ── Step B: cluster diversity cap ─────────────────────────────────────
+    # Load cluster names for all scored careers in one query (already done
+    # above if interest_boosts exist; redo only if not already available)
+    if not interest_boosts:
+        career_ids_all = list(career_scores.keys())
+        cluster_rows = db.execute(
+            text("""
+                SELECT c.id, cc.name AS cluster_name
+                FROM careers c
+                LEFT JOIN career_clusters cc ON cc.id = c.cluster_id
+                WHERE c.id = ANY(:ids)
+            """),
+            {"ids": career_ids_all},
+        ).mappings().all()
+        career_cluster_map = {r["id"]: r["cluster_name"] for r in cluster_rows}
+    # (if interest_boosts path ran, career_cluster_map is already populated)
+
+    MAX_PER_CLUSTER = 2          # max careers shown per cluster
+    cluster_seen: dict[str, int] = {}
+    top = []
+
+    for cid, original_score in all_sorted:
+        cluster = career_cluster_map.get(cid) or "Other"
+        seen = cluster_seen.get(cluster, 0)
+
+        # Allow up to MAX_PER_CLUSTER per cluster
+        if seen < MAX_PER_CLUSTER:
+            top.append((cid, original_score))
+            cluster_seen[cluster] = seen + 1
+
+        if len(top) >= limit:
+            break
+
+    # Safety fallback: if diversity cap left us with fewer than limit
+    # (e.g. only 1–2 clusters exist), top-up with remaining best careers
+    if len(top) < limit:
+        existing_ids = {cid for cid, _ in top}
+        for cid, original_score in all_sorted:
+            if cid not in existing_ids:
+                top.append((cid, original_score))
+                if len(top) >= limit:
+                    break
     top_career_ids = [cid for cid, _ in top]
 
     if not top_career_ids:
