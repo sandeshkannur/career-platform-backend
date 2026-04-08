@@ -116,7 +116,7 @@ def compute_hsi_v1(raw_skill_score: float, cps_score: float) -> float:
         cps = 100.0
 
     multiplier = 1.0 + (cps * 0.15 / 100.0)
-    return raw * multiplier
+    return min(100.0, raw * multiplier)
 
 def compute_skill_scores_hsi_v1(
     assessment_id: int,
