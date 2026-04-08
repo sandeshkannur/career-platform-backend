@@ -918,6 +918,27 @@ def submit_assessment(
     assessment = db.query(models.Assessment).get(assessment_id)
     if not assessment or assessment.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Minimum response gate — reject submissions with too few answers
+    from sqlalchemy import func as sa_func
+    response_count = (
+        db.query(sa_func.count(models.AssessmentResponse.id))
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .scalar()
+    ) or 0
+
+    MINIMUM_RESPONSES = 45
+    if response_count < MINIMUM_RESPONSES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "INSUFFICIENT_RESPONSES",
+                "message": f"Assessment requires at least {MINIMUM_RESPONSES} responses. Only {response_count} submitted.",
+                "responses_submitted": response_count,
+                "responses_required": MINIMUM_RESPONSES,
+            }
+        )
+
     _ensure_context_profile_for_assessment(
     db=db,
     assessment=assessment,
@@ -1084,6 +1105,16 @@ def submit_assessment(
                 careers_safe = project_student_safe(
                     _sanitize_recommendations_payload(raw_payload)
                 ).get("recommended_careers") or []
+                careers_with_scores = [
+                    {
+                        "title": c.get("title"),
+                        "cluster": c.get("cluster"),
+                        "score": round(float(c.get("score") or 0), 2),
+                        "fit_band": c.get("fit_band_key") or c.get("fit_band"),
+                        "rank": idx + 1,
+                    }
+                    for idx, c in enumerate(raw_careers[:9])
+                ]
 
         except Exception as e:
             print(
@@ -1091,6 +1122,7 @@ def submit_assessment(
                 f"for student_profile.id={getattr(student_profile,'id',None)}: {e}"
             )
             careers_safe = []
+            careers_with_scores = []
 
         existing.recommended_stream = _derive_stream_from_careers(careers_safe)
         existing.recommended_careers = careers_safe
@@ -1100,13 +1132,16 @@ def submit_assessment(
         existing.assessment_version = assessment.assessment_version
         existing.scoring_config_version = assessment.scoring_config_version
         existing.content_version = assessment.assessment_version
-        existing.contrib_trace = build_contrib_trace_v1(
-            assessment_id=assessment_id,
-            assessment_version=assessment.assessment_version,
-            scoring_config_version=assessment.scoring_config_version,
-            content_version=assessment.assessment_version,
-            contrib_trace_seed=contrib_trace_seed,
-        )
+        existing.contrib_trace = {
+            **build_contrib_trace_v1(
+                assessment_id=assessment_id,
+                assessment_version=assessment.assessment_version,
+                scoring_config_version=assessment.scoring_config_version,
+                content_version=assessment.assessment_version,
+                contrib_trace_seed=contrib_trace_seed,
+            ),
+            "career_scores": careers_with_scores,
+        }
         result = existing
     else:
         # Option A: unified career engine (single source of truth)
@@ -1130,6 +1165,16 @@ def submit_assessment(
                 careers_safe = project_student_safe(
                     _sanitize_recommendations_payload(raw_payload)
                 ).get("recommended_careers") or []
+                careers_with_scores = [
+                    {
+                        "title": c.get("title"),
+                        "cluster": c.get("cluster"),
+                        "score": round(float(c.get("score") or 0), 2),
+                        "fit_band": c.get("fit_band_key") or c.get("fit_band"),
+                        "rank": idx + 1,
+                    }
+                    for idx, c in enumerate(raw_careers[:9])
+                ]
 
         except Exception as e:
             print(
@@ -1137,6 +1182,7 @@ def submit_assessment(
                 f"for student_profile.id={getattr(student_profile,'id',None)}: {e}"
             )
             careers_safe = []
+            careers_with_scores = []
 
         stream_used = _derive_stream_from_careers(careers_safe)
 
@@ -1149,13 +1195,16 @@ def submit_assessment(
             assessment_version=assessment.assessment_version,
             scoring_config_version=assessment.scoring_config_version,
             content_version=assessment.assessment_version,
-            contrib_trace=build_contrib_trace_v1(
-                assessment_id=assessment_id,
-                assessment_version=assessment.assessment_version,
-                scoring_config_version=assessment.scoring_config_version,
-                content_version=assessment.assessment_version,
-                contrib_trace_seed=contrib_trace_seed,
-            ),
+            contrib_trace={
+                **build_contrib_trace_v1(
+                    assessment_id=assessment_id,
+                    assessment_version=assessment.assessment_version,
+                    scoring_config_version=assessment.scoring_config_version,
+                    content_version=assessment.assessment_version,
+                    contrib_trace_seed=contrib_trace_seed,
+                ),
+                "career_scores": careers_with_scores,
+            },
         )
         db.add(result)
 
