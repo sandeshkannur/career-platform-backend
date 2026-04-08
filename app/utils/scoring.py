@@ -180,12 +180,20 @@ def compute_cps_v1(
 
     # --- v1 maps aligned to CURRENT stored values from UI/DB ---
 
+    # DEFAULT POLICY: When context fields are unknown/missing, we assume
+    # a low-resource rural student profile (our primary target audience).
+    # This ensures the HSI fairness boost HELPS students we cannot profile
+    # rather than applying a neutral mid-range adjustment.
+    # Result: all-unknown CPS = 0.55*0.35 + 0.70*0.25 + 0.55*0.25 + 0.55*0.15
+    #       = 0.1925 + 0.175 + 0.1375 + 0.0825 = 0.5875 → 58.75
+    # (vs previous all-unknown = 69.5, which gave a weaker fairness boost)
+
     # SES band (practical constraints)
     ses_map = {
         "careful": 0.55,       # careful with expenses
         "some": 0.75,          # can manage some extra costs
         "not_barrier": 0.90,   # costs usually not a big barrier
-        "unknown": 0.65,       # prefer not to say / default
+        "unknown": 0.55,       # prefer not to say / default
     }
 
     # Education board
@@ -196,7 +204,7 @@ def compute_cps_v1(
         "ib": 0.90,
         "cambridge": 0.90,
         "other": 0.75,
-        "unknown": 0.75,
+        "unknown": 0.70,
     }
 
     # Support level
@@ -204,7 +212,7 @@ def compute_cps_v1(
         "low": 0.55,       # mostly self-supported
         "medium": 0.75,    # some guidance
         "high": 0.95,      # strong support
-        "unknown": 0.70,
+        "unknown": 0.55,
     }
 
     # Resource access
@@ -212,76 +220,7 @@ def compute_cps_v1(
         "limited": 0.55,
         "moderate": 0.75,
         "good": 0.90,
-        "unknown": 0.70,
-    }
-
-    ses_score = ses_map.get(ses_band, ses_map["unknown"])
-    board_score = board_map.get(education_board, board_map["unknown"])
-    support_score = support_map.get(support_level, support_map["unknown"])
-    resource_score = resource_map.get(resource_access, resource_map["unknown"])
-
-    # --- Weighted CPS (still explainable) ---
-    cps_normalized = (
-        (ses_score * 0.35)
-        + (board_score * 0.25)
-        + (support_score * 0.25)
-        + (resource_score * 0.15)
-    )
-
-    return round(cps_normalized * 100, 2)
-# =========================================================
-# Context Profile Score (CPS) — Hybrid Model v1
-# =========================================================
-
-
-    """
-    Compute Context Profile Score (CPS) on a 0–100 scale.
-
-    Deterministic, explainable, versioned.
-    No DB access. No side effects.
-    """
-
-    # Normalize inputs (defensive)
-    ses_band = (ses_band or "unknown").strip().lower()
-    education_board = (education_board or "unknown").strip().lower()
-    support_level = (support_level or "unknown").strip().lower()
-    resource_access = (resource_access or "unknown").strip().lower()
-
-    # --- v1 maps aligned to CURRENT stored values from UI/DB ---
-
-    # SES band (practical constraints)
-    ses_map = {
-        "careful": 0.55,       # careful with expenses
-        "some": 0.75,          # can manage some extra costs
-        "not_barrier": 0.90,   # costs usually not a big barrier
-        "unknown": 0.65,       # prefer not to say / default
-    }
-
-    # Education board
-    board_map = {
-        "state": 0.70,
-        "cbse": 0.78,
-        "icse": 0.82,
-        "ib": 0.90,
-        "cambridge": 0.90,
-        "other": 0.75,
-        "unknown": 0.75,
-    }
-
-    # Support level
-    support_map = {
-        "low": 0.55,       # mostly self-supported
-        "medium": 0.75,    # some guidance
-        "high": 0.95,      # strong support
-        "unknown": 0.70,
-    }
-
-    # Resource access
-    resource_map = {
-        "limited": 0.55,
-        "moderate": 0.75,
-        "good": 0.90,
-        "unknown": 0.70,
+        "unknown": 0.55,
     }
 
     ses_score = ses_map.get(ses_band, ses_map["unknown"])
