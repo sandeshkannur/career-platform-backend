@@ -414,10 +414,14 @@ def get_platform_analytics(
         null_score_count = _i(null_score_row["cnt"]) if null_score_row else 0
         if null_score_count > 0:
             data_issues.append({
-                "severity": "critical",
+                "severity": "info",
                 "code":     "NO_SCORE_IN_RESULTS",
-                "title":    "Score and fit_band NULL in all career results",
-                "detail":   f"recommended_careers JSONB has null score and fit_band for all {null_score_count} rows.",
+                "title":    "Career scores stored in contrib_trace (not recommended_careers)",
+                "detail":   (
+                    "By design, recommended_careers is student-safe (no scores). "
+                    "Admin scores are in contrib_trace.career_scores for assessments after Fix 3 deployment. "
+                    "Historical rows have no score stored."
+                ),
                 "fix":      "Include score and fit_band in the JSONB at scoring time.",
             })
     except Exception as e:
