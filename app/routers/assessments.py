@@ -918,6 +918,27 @@ def submit_assessment(
     assessment = db.query(models.Assessment).get(assessment_id)
     if not assessment or assessment.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # Minimum response gate — reject submissions with too few answers
+    from sqlalchemy import func as sa_func
+    response_count = (
+        db.query(sa_func.count(models.AssessmentResponse.id))
+        .filter(models.AssessmentResponse.assessment_id == assessment_id)
+        .scalar()
+    ) or 0
+
+    MINIMUM_RESPONSES = 45
+    if response_count < MINIMUM_RESPONSES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "INSUFFICIENT_RESPONSES",
+                "message": f"Assessment requires at least {MINIMUM_RESPONSES} responses. Only {response_count} submitted.",
+                "responses_submitted": response_count,
+                "responses_required": MINIMUM_RESPONSES,
+            }
+        )
+
     _ensure_context_profile_for_assessment(
     db=db,
     assessment=assessment,
