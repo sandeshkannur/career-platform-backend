@@ -91,16 +91,18 @@ class PostgresGraphQuery(GraphQueryInterface):
         self.db = db
 
     def _get_student_skill_scores(self, student_id: int) -> dict:
-        """Returns {skill_name: hsi_score} for most recent assessment."""
+        """Returns {skill_name: hsi_score} from most recent assessment that has skill scores."""
         rows = self.db.execute(text("""
             SELECT sk.name AS skill, sss.hsi_score
             FROM student_skill_scores sss
             JOIN skills sk ON sk.id = sss.skill_id
             WHERE sss.student_id = :sid
               AND sss.assessment_id = (
-                SELECT a.id FROM assessments a
-                WHERE a.user_id = (SELECT user_id FROM students WHERE id = :sid)
-                ORDER BY a.submitted_at DESC LIMIT 1
+                SELECT assessment_id
+                FROM student_skill_scores
+                WHERE student_id = :sid
+                ORDER BY assessment_id DESC
+                LIMIT 1
               )
         """), {"sid": student_id}).fetchall()
         return {r.skill: float(r.hsi_score or 0) for r in rows}
