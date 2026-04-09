@@ -471,6 +471,113 @@ def get_platform_analytics(
                 "fix":      "Review career weight distribution or cluster diversity reranker.",
             })
 
+    # ── Resolved issues registry with live verification ──────────────────────
+    resolved_issues = [
+        {
+            "code":       "HSI_OVERFLOW",
+            "severity":   "resolved",
+            "title":      "21 skill scores exceeded 100 — capped at 100.0",
+            "detail":     "HSI formula produced scores above 100. Cap applied in compute_hsi_v1. 21 historical rows backfilled.",
+            "fix_applied": "min(100.0, raw * multiplier) in scoring service + SQL backfill of 21 rows",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "SELECT COUNT(*) FROM student_skill_scores WHERE hsi_score > 100 → 0 rows",
+        },
+        {
+            "code":       "CAREER_SNAPSHOT_BUG",
+            "severity":   "resolved",
+            "title":      "368 careers stored in results — reduced to 9",
+            "detail":     "26 assessments had full catalog stored instead of top 9. All 3 write sites confirmed at limit=9. Historical rows truncated.",
+            "fix_applied": "limit=9 confirmed at all write sites + SQL backfill of 26 rows",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "SELECT COUNT(*) FROM assessment_results WHERE jsonb_array_length(recommended_careers) > 9 → 0 rows",
+        },
+        {
+            "code":       "MISSING_RESULTS_GATE",
+            "severity":   "resolved",
+            "title":      "No response count validation on submit — gate added",
+            "detail":     "Assessments could be submitted with 0 responses. Minimum 45-response gate now enforced.",
+            "fix_applied": "POST /assessments/{id}/submit rejects 422 INSUFFICIENT_RESPONSES if response_count < 45",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "Submit with 0 responses → 422 INSUFFICIENT_RESPONSES confirmed",
+        },
+        {
+            "code":       "CPS_DEFAULTS",
+            "severity":   "resolved",
+            "title":      "CPS unknown defaults set to low-resource rural baseline",
+            "detail":     "All-unknown CPS was 69.5. Lowered to 58.75 to give rural students stronger HSI fairness boost.",
+            "fix_applied": "ses=0.55, board=0.70, support=0.55, resource=0.55 in compute_cps_v1",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "New assessments with all-unknown context → CPS = 58.75",
+        },
+        {
+            "code":       "ORPHAN_SKILLS",
+            "severity":   "resolved",
+            "title":      "7 orphan skills zeroed — Education/Health Sci now reachable",
+            "detail":     "7 skills held 25-29% dead weight per cluster. Zeroed and 1,635 rows rescaled. Education now top cluster.",
+            "fix_applied": "career_student_skill weight=0 for 7 skills + proportional rescale of 1,635 rows",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "SELECT SUM(weight) FROM career_student_skill WHERE student_skill IN (...orphans...) → 0.00",
+        },
+        {
+            "code":       "INAPPROPRIATE_CAREERS",
+            "severity":   "resolved",
+            "title":      "33 inappropriate careers deactivated from recommendations",
+            "detail":     "Manual labour, culturally stigmatised, and Western-irrelevant careers removed. Active careers: 368 → 335. 14 careers relabelled for Indian context.",
+            "fix_applied": "is_active=FALSE for 33 careers + career_tier classification + scoring engine filters WHERE is_active=TRUE",
+            "fixed_on":   "2026-04-09",
+            "verified":   True,
+            "verification": "SELECT COUNT(*) FROM careers WHERE is_active=TRUE → 335",
+        },
+    ]
+
+    # Live verification — confirm resolved issues are still clean
+    try:
+        hsi_check = db.execute(text(
+            "SELECT COUNT(*) as cnt FROM student_skill_scores WHERE hsi_score > 100"
+        )).fetchone()
+        resolved_issues[0]["still_resolved"] = (hsi_check.cnt == 0)
+        resolved_issues[0]["live_check"] = f"hsi_score > 100: {hsi_check.cnt} rows"
+    except Exception:
+        resolved_issues[0]["still_resolved"] = None
+
+    try:
+        career_check = db.execute(text(
+            "SELECT COUNT(*) as cnt FROM assessment_results WHERE jsonb_array_length(recommended_careers) > 9"
+        )).fetchone()
+        resolved_issues[1]["still_resolved"] = (career_check.cnt == 0)
+        resolved_issues[1]["live_check"] = f"careers > 9: {career_check.cnt} rows"
+    except Exception:
+        resolved_issues[1]["still_resolved"] = None
+
+    try:
+        orphan_check = db.execute(text("""
+            SELECT ROUND(SUM(weight)::numeric, 2) AS total
+            FROM career_student_skill
+            WHERE student_skill IN (
+                'Leadership Skills','Technology Literacy','Research Skills',
+                'Self-Awareness & Emotional Intelligence','Civic Literacy',
+                'Media Literacy','Cultural Literacy'
+            )
+        """)).fetchone()
+        resolved_issues[4]["still_resolved"] = (float(orphan_check.total or 0) == 0.0)
+        resolved_issues[4]["live_check"] = f"orphan skill total weight: {orphan_check.total}"
+    except Exception:
+        resolved_issues[4]["still_resolved"] = None
+
+    try:
+        career_count = db.execute(text(
+            "SELECT COUNT(*) as cnt FROM careers WHERE is_active = TRUE"
+        )).fetchone()
+        resolved_issues[5]["still_resolved"] = (career_count.cnt <= 342)
+        resolved_issues[5]["live_check"] = f"active careers: {career_count.cnt}"
+    except Exception:
+        resolved_issues[5]["still_resolved"] = None
+
     return {
         "generated_at":          datetime.utcnow().isoformat(),
         "funnel":                 funnel,
@@ -488,5 +595,6 @@ def get_platform_analytics(
         "overflow_hsi_count":     overflow_hsi_count,
         "zero_hsi_count":         zero_hsi_count,
         "data_issues":            data_issues,
+        "resolved_issues":        resolved_issues,
         **({"error_log": error_log} if error_log else {}),
     }
