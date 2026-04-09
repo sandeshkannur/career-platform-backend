@@ -115,6 +115,9 @@ def list_careers(
           c.id, c.title, c.career_code, c.cluster_id, c.description,
           c.is_active, c.career_tier, c.tier_reason,
           c.deactivated_at, c.deactivated_by,
+          c.salary_entry_inr, c.salary_mid_inr, c.salary_peak_inr,
+          c.industry_growth_pct, c.automation_risk,
+          c.future_outlook, c.recommended_stream,
           cc.name AS cluster_name
         FROM careers c
         LEFT JOIN career_clusters cc ON cc.id = c.cluster_id
@@ -187,7 +190,15 @@ def list_careers(
             "career_tier":      _safe_int(r["career_tier"]),
             "tier_reason":      r["tier_reason"],
             "deactivated_at":   r["deactivated_at"].isoformat() if r["deactivated_at"] else None,
-            "deactivated_by":   r["deactivated_by"],
+            "deactivated_by":     r["deactivated_by"],
+            # Salary + market data live on the careers table (language-independent)
+            "salary_entry_inr":   _safe_int(r["salary_entry_inr"]),
+            "salary_mid_inr":     _safe_int(r["salary_mid_inr"]),
+            "salary_peak_inr":    _safe_int(r["salary_peak_inr"]),
+            "industry_growth_pct": _safe_int(r["industry_growth_pct"]),
+            "automation_risk":    r["automation_risk"],
+            "future_outlook":     r["future_outlook"],
+            "recommended_stream": r["recommended_stream"],
             "content_en": {
                 "prestige_title":     content.get("prestige_title"),
                 "indian_job_title":   content.get("indian_job_title"),
@@ -200,12 +211,6 @@ def list_careers(
                 "pathway_accessible": content.get("pathway_accessible"),
                 "pathway_premium":    content.get("pathway_premium"),
                 "pathway_earn_learn": content.get("pathway_earn_learn"),
-                "salary_entry_inr":   _safe_int(content.get("salary_entry_inr")),
-                "salary_mid_inr":     _safe_int(content.get("salary_mid_inr")),
-                "salary_peak_inr":    _safe_int(content.get("salary_peak_inr")),
-                "automation_risk":    content.get("automation_risk"),
-                "future_outlook":     content.get("future_outlook"),
-                "recommended_stream": content.get("recommended_stream"),
                 "parallel_path":      content.get("parallel_path"),
             } if content else None,
             "keyskill_count":     keyskill_map.get(cid, 0),

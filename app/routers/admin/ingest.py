@@ -2374,3 +2374,417 @@ async def upload_aq_student_skill_weights(
         "aq_codes": aq_codes,
         "rows_written": len(agg),
     }
+
+
+# ============================================================
+# TRANSLATION & LANGUAGE ENDPOINTS
+# ============================================================
+
+@router.get("/languages", summary="List registered languages")
+def get_languages(db: Session = Depends(get_db), _=Depends(get_current_active_user)):
+    """Return all rows from the languages table."""
+    rows = db.execute(text("SELECT code, name, native_name, direction, is_active FROM languages ORDER BY code")).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.post("/languages", summary="Register a new language")
+def register_language(
+    code: str = Form(...),
+    name: str = Form(...),
+    native_name: str = Form(None),
+    direction: str = Form("ltr"),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """Insert or activate a language record."""
+    existing = db.execute(text("SELECT code FROM languages WHERE code = :code"), {"code": code}).first()
+    if existing:
+        db.execute(
+            text("UPDATE languages SET name=:name, native_name=:native_name, direction=:direction, is_active=TRUE WHERE code=:code"),
+            {"code": code, "name": name, "native_name": native_name, "direction": direction},
+        )
+        db.commit()
+        return {"ok": True, "action": "updated", "code": code}
+    db.execute(
+        text("INSERT INTO languages (code, name, native_name, direction, is_active) VALUES (:code, :name, :native_name, :direction, TRUE)"),
+        {"code": code, "name": name, "native_name": native_name, "direction": direction},
+    )
+    db.commit()
+    return {"ok": True, "action": "created", "code": code}
+
+
+@router.post("/upload-question-translations", summary="Upload question translations (CSV)")
+async def upload_question_translations(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    CSV columns: question_id, locale, question_text, assessment_version
+    Upsert into question_translations.
+    """
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    inserted = updated = skipped = 0
+    errors: list = []
+
+    for line_no, row in enumerate(reader, start=2):
+        question_id = row.get("question_id", "").strip()
+        locale      = row.get("locale", "").strip()
+        q_text      = row.get("question_text", "").strip()
+        av          = row.get("assessment_version", "").strip()
+
+        if not all([question_id, locale, q_text]):
+            errors.append({"row": line_no, "error": "Missing required field (question_id, locale, question_text)"})
+            continue
+
+        try:
+            question_id = int(question_id)
+        except ValueError:
+            errors.append({"row": line_no, "error": f"Non-integer question_id: {question_id!r}"})
+            continue
+
+        lang_ok = db.execute(text("SELECT 1 FROM languages WHERE code=:code"), {"code": locale}).first()
+        if not lang_ok:
+            errors.append({"row": line_no, "error": f"Unknown locale: {locale!r} — register it first via POST /languages"})
+            skipped += 1
+            continue
+
+        existing = db.execute(
+            text("SELECT id FROM question_translations WHERE question_id=:qid AND locale=:loc"),
+            {"qid": question_id, "loc": locale},
+        ).first()
+
+        if existing:
+            db.execute(
+                text("""
+                    UPDATE question_translations
+                    SET question_text=:text, assessment_version=:av, updated_at=NOW()
+                    WHERE question_id=:qid AND locale=:loc
+                """),
+                {"text": q_text, "av": av, "qid": question_id, "loc": locale},
+            )
+            updated += 1
+        else:
+            db.execute(
+                text("""
+                    INSERT INTO question_translations (question_id, locale, question_text, assessment_version)
+                    VALUES (:qid, :loc, :text, :av)
+                """),
+                {"qid": question_id, "loc": locale, "text": q_text, "av": av},
+            )
+            inserted += 1
+
+    db.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/upload-career-content", summary="Upload career content translations (CSV)")
+async def upload_career_content(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    CSV columns: career_code, lang, prestige_title, domain_category, description,
+                 indian_job_title, top_tier_potential, parallel_path,
+                 pathway_step1, pathway_step2, pathway_step3,
+                 pathway_accessible, pathway_premium, pathway_earn_learn
+    Upsert into career_content.
+    """
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    inserted = updated = skipped = 0
+    errors: list = []
+
+    TEXT_COLS = [
+        "prestige_title", "domain_category", "description", "indian_job_title",
+        "top_tier_potential", "parallel_path", "pathway_step1", "pathway_step2",
+        "pathway_step3", "pathway_accessible", "pathway_premium", "pathway_earn_learn",
+    ]
+
+    for line_no, row in enumerate(reader, start=2):
+        career_code = row.get("career_code", "").strip()
+        lang        = row.get("lang", "").strip()
+
+        if not career_code or not lang:
+            errors.append({"row": line_no, "error": "Missing career_code or lang"})
+            continue
+
+        career = db.execute(
+            text("SELECT id FROM careers WHERE career_code=:code"),
+            {"code": career_code},
+        ).first()
+        if not career:
+            errors.append({"row": line_no, "error": f"Unknown career_code: {career_code!r}"})
+            skipped += 1
+            continue
+
+        career_id = career[0]
+        params = {"career_id": career_id, "lang": lang}
+        for col in TEXT_COLS:
+            params[col] = row.get(col, "").strip() or None
+
+        existing = db.execute(
+            text("SELECT id FROM career_content WHERE career_id=:career_id AND lang=:lang"),
+            {"career_id": career_id, "lang": lang},
+        ).first()
+
+        if existing:
+            set_clause = ", ".join(f"{col}=:{col}" for col in TEXT_COLS) + ", updated_at=NOW()"
+            db.execute(
+                text(f"UPDATE career_content SET {set_clause} WHERE career_id=:career_id AND lang=:lang"),
+                params,
+            )
+            updated += 1
+        else:
+            cols_str = "career_id, lang, " + ", ".join(TEXT_COLS)
+            vals_str = ":career_id, :lang, " + ", ".join(f":{c}" for c in TEXT_COLS)
+            db.execute(text(f"INSERT INTO career_content ({cols_str}) VALUES ({vals_str})"), params)
+            inserted += 1
+
+    db.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/upload-career-market-data", summary="Upload career market/salary data (CSV)")
+async def upload_career_market_data(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    CSV columns: career_code, salary_entry_inr, salary_mid_inr, salary_peak_inr,
+                 industry_growth_pct, automation_risk, future_outlook, recommended_stream
+    Updates careers table directly (salary + market fields).
+    """
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    updated = skipped = 0
+    errors: list = []
+
+    INT_COLS = ["salary_entry_inr", "salary_mid_inr", "salary_peak_inr", "industry_growth_pct"]
+    STR_COLS = ["automation_risk", "future_outlook", "recommended_stream"]
+
+    for line_no, row in enumerate(reader, start=2):
+        career_code = row.get("career_code", "").strip()
+        if not career_code:
+            errors.append({"row": line_no, "error": "Missing career_code"})
+            continue
+
+        career = db.execute(
+            text("SELECT id FROM careers WHERE career_code=:code"),
+            {"code": career_code},
+        ).first()
+        if not career:
+            errors.append({"row": line_no, "error": f"Unknown career_code: {career_code!r}"})
+            skipped += 1
+            continue
+
+        params: dict = {"career_id": career[0]}
+        set_parts: list = []
+
+        for col in INT_COLS:
+            raw = row.get(col, "").strip()
+            if raw:
+                try:
+                    params[col] = int(raw)
+                    set_parts.append(f"{col}=:{col}")
+                except ValueError:
+                    errors.append({"row": line_no, "error": f"Non-integer {col}: {raw!r}"})
+
+        for col in STR_COLS:
+            raw = row.get(col, "").strip()
+            if raw:
+                params[col] = raw
+                set_parts.append(f"{col}=:{col}")
+
+        if not set_parts:
+            skipped += 1
+            continue
+
+        db.execute(
+            text(f"UPDATE careers SET {', '.join(set_parts)} WHERE id=:career_id"),
+            params,
+        )
+        updated += 1
+
+    db.commit()
+    return {"ok": True, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/upload-explanation-translations", summary="Upload explanation/explainability translations (CSV)")
+async def upload_explanation_translations(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    CSV columns: content_version, locale, explanation_key, text
+    Upsert into explanation_translations.
+    """
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    inserted = updated = skipped = 0
+    errors: list = []
+
+    for line_no, row in enumerate(reader, start=2):
+        cv   = row.get("content_version", "").strip()
+        loc  = row.get("locale", "").strip()
+        key  = row.get("explanation_key", "").strip()
+        text_val = row.get("text", "").strip()
+
+        if not all([cv, loc, key, text_val]):
+            errors.append({"row": line_no, "error": "Missing required field (content_version, locale, explanation_key, text)"})
+            continue
+
+        lang_ok = db.execute(text("SELECT 1 FROM languages WHERE code=:code"), {"code": loc}).first()
+        if not lang_ok:
+            errors.append({"row": line_no, "error": f"Unknown locale: {loc!r}"})
+            skipped += 1
+            continue
+
+        existing = db.execute(
+            text("SELECT id FROM explanation_translations WHERE content_version=:cv AND locale=:loc AND explanation_key=:key"),
+            {"cv": cv, "loc": loc, "key": key},
+        ).first()
+
+        if existing:
+            db.execute(
+                text("UPDATE explanation_translations SET text=:text, is_active=TRUE, updated_at=NOW() WHERE id=:id"),
+                {"text": text_val, "id": existing[0]},
+            )
+            updated += 1
+        else:
+            db.execute(
+                text("INSERT INTO explanation_translations (content_version, locale, explanation_key, text, is_active) VALUES (:cv, :loc, :key, :text, TRUE)"),
+                {"cv": cv, "loc": loc, "key": key, "text": text_val},
+            )
+            inserted += 1
+
+    db.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.post("/upload-facet-translations", summary="Upload AQ facet translations (CSV)")
+async def upload_facet_translations(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    CSV columns: facet_id, locale, facet_name
+    Upsert into facet_translations.
+    """
+    content = await file.read()
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+    inserted = updated = skipped = 0
+    errors: list = []
+
+    for line_no, row in enumerate(reader, start=2):
+        facet_id   = row.get("facet_id", "").strip()
+        locale     = row.get("locale", "").strip()
+        facet_name = row.get("facet_name", "").strip()
+
+        if not all([facet_id, locale, facet_name]):
+            errors.append({"row": line_no, "error": "Missing required field (facet_id, locale, facet_name)"})
+            continue
+
+        lang_ok = db.execute(text("SELECT 1 FROM languages WHERE code=:code"), {"code": locale}).first()
+        if not lang_ok:
+            errors.append({"row": line_no, "error": f"Unknown locale: {locale!r}"})
+            skipped += 1
+            continue
+
+        facet_ok = db.execute(text("SELECT 1 FROM aq_facets WHERE facet_id=:fid"), {"fid": facet_id}).first()
+        if not facet_ok:
+            errors.append({"row": line_no, "error": f"Unknown facet_id: {facet_id!r}"})
+            skipped += 1
+            continue
+
+        existing = db.execute(
+            text("SELECT id FROM facet_translations WHERE facet_id=:fid AND locale=:loc"),
+            {"fid": facet_id, "loc": locale},
+        ).first()
+
+        if existing:
+            db.execute(
+                text("UPDATE facet_translations SET facet_name=:name, updated_at=NOW() WHERE id=:id"),
+                {"name": facet_name, "id": existing[0]},
+            )
+            updated += 1
+        else:
+            db.execute(
+                text("INSERT INTO facet_translations (facet_id, locale, facet_name) VALUES (:fid, :loc, :name)"),
+                {"fid": facet_id, "loc": locale, "name": facet_name},
+            )
+            inserted += 1
+
+    db.commit()
+    return {"ok": True, "inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+@router.get("/export/questions-for-translation", summary="Export questions as CSV for translation")
+def export_questions_for_translation(
+    locale: str = Query(None, description="If provided, include existing translation in output"),
+    assessment_version: str = Query(None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    """
+    Returns a CSV with columns: question_id, question_code, assessment_version, question_text_en, [translated_text]
+    Useful for preparing translation input files.
+    """
+    params: dict = {}
+    av_filter = ""
+    if assessment_version:
+        av_filter = "WHERE q.assessment_version = :av"
+        params["av"] = assessment_version
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                q.id AS question_id,
+                q.question_code,
+                q.assessment_version,
+                q.question_text AS question_text_en
+            FROM questions q
+            {av_filter}
+            ORDER BY q.assessment_version, q.id
+        """),
+        params,
+    ).mappings().all()
+
+    translated: dict = {}
+    if locale:
+        t_rows = db.execute(
+            text("SELECT question_id, question_text FROM question_translations WHERE locale=:loc"),
+            {"loc": locale},
+        ).mappings().all()
+        translated = {r["question_id"]: r["question_text"] for r in t_rows}
+
+    output = io.StringIO()
+    fieldnames = ["question_id", "question_code", "assessment_version", "question_text_en"]
+    if locale:
+        fieldnames.append(f"question_text_{locale}")
+
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for r in rows:
+        row_dict = {
+            "question_id": r["question_id"],
+            "question_code": r["question_code"],
+            "assessment_version": r["assessment_version"],
+            "question_text_en": r["question_text_en"],
+        }
+        if locale:
+            row_dict[f"question_text_{locale}"] = translated.get(r["question_id"], "")
+        writer.writerow(row_dict)
+
+    output.seek(0)
+    filename = f"questions_for_translation_{locale or 'all'}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
