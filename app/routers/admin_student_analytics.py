@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.database import get_db
+from app.deps import get_db
 from app.auth.auth import require_admin_or_counsellor
 
 router = APIRouter()
