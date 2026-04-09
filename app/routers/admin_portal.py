@@ -109,28 +109,19 @@ def list_careers(
     }).fetchone()
     total = int(count_row.cnt or 0)
 
-    # Main paginated query
+    # Query 1 — main careers list (no joins to aggregation tables)
     rows = db.execute(text("""
         SELECT
           c.id, c.title, c.career_code, c.cluster_id, c.description,
           c.is_active, c.career_tier, c.tier_reason,
           c.deactivated_at, c.deactivated_by,
-          cc.name                                   AS cluster_name,
-          COUNT(DISTINCT cka.keyskill_id)            AS keyskill_count,
-          COUNT(DISTINCT css.student_skill)          AS skill_weight_count,
-          ROUND(SUM(css.weight)::numeric, 2)         AS skill_weight_total
+          cc.name AS cluster_name
         FROM careers c
-        LEFT JOIN career_clusters cc              ON cc.id  = c.cluster_id
-        LEFT JOIN career_keyskill_association cka ON cka.career_id = c.id
-        LEFT JOIN career_student_skill css        ON css.career_id = c.id
+        LEFT JOIN career_clusters cc ON cc.id = c.cluster_id
         WHERE (:cluster_id IS NULL OR c.cluster_id = :cluster_id)
           AND (:is_active  IS NULL OR c.is_active   = :is_active)
           AND (:tier       IS NULL OR c.career_tier  = :tier)
           AND (:search     IS NULL OR LOWER(c.title) LIKE LOWER(:search))
-        GROUP BY
-          c.id, c.title, c.career_code, c.cluster_id, c.description,
-          c.is_active, c.career_tier, c.tier_reason,
-          c.deactivated_at, c.deactivated_by, cc.name
         ORDER BY cc.name NULLS LAST, c.title
         LIMIT :page_size OFFSET :offset
     """), {
@@ -142,8 +133,36 @@ def list_careers(
         "offset":     offset,
     }).mappings().all()
 
-    # Fetch EN content for all careers in this page
     career_ids = [int(r["id"]) for r in rows]
+
+    # Query 2 — keyskill counts per career
+    keyskill_map: dict = {}
+    if career_ids:
+        keyskill_rows = db.execute(text("""
+            SELECT career_id, COUNT(*) AS keyskill_count
+            FROM career_keyskill_association
+            WHERE career_id = ANY(:career_ids)
+            GROUP BY career_id
+        """), {"career_ids": career_ids}).fetchall()
+        keyskill_map = {r.career_id: int(r.keyskill_count) for r in keyskill_rows}
+
+    # Query 3 — skill weight stats per career
+    weight_map: dict = {}
+    if career_ids:
+        weight_rows = db.execute(text("""
+            SELECT career_id,
+                   COUNT(*)                           AS skill_count,
+                   ROUND(SUM(weight)::numeric, 2)     AS weight_total
+            FROM career_student_skill
+            WHERE career_id = ANY(:career_ids)
+            GROUP BY career_id
+        """), {"career_ids": career_ids}).fetchall()
+        weight_map = {
+            r.career_id: (int(r.skill_count), float(r.weight_total or 0))
+            for r in weight_rows
+        }
+
+    # Query 4 — EN content
     content_map: dict = {}
     if career_ids:
         content_rows = db.execute(text("""
@@ -156,6 +175,7 @@ def list_careers(
     for r in rows:
         cid = int(r["id"])
         content = content_map.get(cid, {})
+        skill_count, weight_total = weight_map.get(cid, (0, 0.0))
         careers.append({
             "id":               cid,
             "title":            r["title"],
@@ -188,9 +208,9 @@ def list_careers(
                 "recommended_stream": content.get("recommended_stream"),
                 "parallel_path":      content.get("parallel_path"),
             } if content else None,
-            "keyskill_count":      _safe_int(r["keyskill_count"]) or 0,
-            "skill_weight_count":  _safe_int(r["skill_weight_count"]) or 0,
-            "skill_weight_total":  _safe_float(r["skill_weight_total"]),
+            "keyskill_count":     keyskill_map.get(cid, 0),
+            "skill_weight_count": skill_count,
+            "skill_weight_total": weight_total,
         })
 
     import math
