@@ -197,9 +197,9 @@ class PostgresGraphQuery(GraphQueryInterface):
             JOIN student_skill_scores sss ON sss.skill_id = sk.id
             WHERE sss.student_id = :sid
               AND sss.assessment_id = (
-                SELECT a.id FROM assessments a
-                WHERE a.user_id = (SELECT user_id FROM students WHERE id = :sid)
-                ORDER BY a.submitted_at DESC LIMIT 1
+                SELECT assessment_id FROM student_skill_scores
+                WHERE student_id = :sid
+                ORDER BY assessment_id DESC LIMIT 1
               )
             GROUP BY asw.aq_code
         """), {"sid": student_id}).fetchall()
