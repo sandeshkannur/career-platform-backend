@@ -263,10 +263,11 @@ def compute_careers_for_student(
                     }
                 )
 
-    # 5) Load Career rows for selected IDs
+    # 5) Load Career rows for selected IDs — active careers only
     careers = (
         db.query(models.Career)
         .filter(models.Career.id.in_(top_career_ids))
+        .filter(models.Career.is_active == True)
         .all()
     )
     career_by_id = {c.id: c for c in careers}

@@ -119,6 +119,7 @@ class PostgresGraphQuery(GraphQueryInterface):
             JOIN careers c ON c.id = css.career_id
             JOIN career_clusters cc ON cc.id = c.cluster_id
             WHERE css.weight > 0
+              AND c.is_active = TRUE
         """)).fetchall()
 
         career_data = {}
@@ -366,6 +367,7 @@ class PostgresGraphQuery(GraphQueryInterface):
             FROM careers c
             JOIN career_clusters cc ON cc.id = c.cluster_id
             WHERE LOWER(c.title) = LOWER(:title)
+              AND c.is_active = TRUE
             LIMIT 1
         """), {"title": target_career_title}).fetchone()
 

@@ -237,6 +237,11 @@ class Career(Base):
     automation_risk     = Column(String(20), nullable=True)
     future_outlook      = Column(String(20), nullable=True)
     recommended_stream  = Column(String(50), nullable=True)
+    is_active           = Column(Boolean, nullable=False, default=True)
+    career_tier         = Column(Integer, nullable=False, default=1)
+    tier_reason         = Column(Text, nullable=True)
+    deactivated_at      = Column(DateTime(timezone=True), nullable=True)
+    deactivated_by      = Column(String(100), nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
