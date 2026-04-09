@@ -189,26 +189,76 @@ class PostgresGraphQuery(GraphQueryInterface):
                     aq_influences[aq]["cluster_influence"].get(cluster, 0) + influence
                 )
 
-        # Add student scores per AQ (weighted average of skill scores)
-        aq_score_rows = self.db.execute(text("""
-            SELECT asw.aq_code,
-                   AVG(sss.hsi_score * asw.weight) AS weighted_score
-            FROM aq_student_skill_weight asw
-            JOIN skills sk ON sk.name = asw.student_skill
-            JOIN student_skill_scores sss ON sss.skill_id = sk.id
+        # Add student scores per AQ using a Python bridge between the two naming systems.
+        # skills.name uses AQ-facing names; aq_student_skill_weight.student_skill uses
+        # student-skill names. AQ_SKILL_TO_STUDENT maps AQ-facing → student-skill.
+
+        # Step 1: load student's skill scores keyed by skills.name (AQ-facing names)
+        raw_scores = self.db.execute(text("""
+            SELECT sk.name AS aq_skill_name, sss.hsi_score
+            FROM student_skill_scores sss
+            JOIN skills sk ON sk.id = sss.skill_id
             WHERE sss.student_id = :sid
               AND sss.assessment_id = (
                 SELECT assessment_id FROM student_skill_scores
                 WHERE student_id = :sid
                 ORDER BY assessment_id DESC LIMIT 1
               )
-            GROUP BY asw.aq_code
         """), {"sid": student_id}).fetchall()
 
-        for r in aq_score_rows:
-            if r.aq_code in aq_influences:
-                aq_influences[r.aq_code]["student_score"] = round(
-                    float(r.weighted_score or 0), 1
+        aq_skill_scores = {r.aq_skill_name: float(r.hsi_score or 0) for r in raw_scores}
+
+        # Step 2: bridge AQ-facing skill names → student_skill names
+        AQ_SKILL_TO_STUDENT = {
+            "Abstract Thinking":          "Creativity & Innovation",
+            "Adaptability":               "Adaptability & Flexibility",
+            "Analytical Reasoning":       "Critical Thinking & Problem Solving",
+            "Collaboration":              "Collaboration & Teamwork",
+            "Communication":              "Communication Skills",
+            "Confidence / Self-Efficacy": "Initiative",
+            "Creative Expression":        "Creativity & Innovation",
+            "Critical Thinking":          "Critical Thinking & Problem Solving",
+            "Curiosity & Inquiry":        "Curiosity",
+            "Digital Literacy":           "Digital Literacy",
+            "Emotional Regulation":       "Coping with Stress & Resilience",
+            "Empathy":                    "Social & Cross-Cultural Skills",
+            "Ethical Judgment":           "Ethical Reasoning",
+            "Focus & Attention Control":  "Productivity",
+            "Goal Orientation":           "Grit & Self-Direction",
+            "Grit & Perseverance":        "Grit & Self-Direction",
+            "Information Literacy":       "Information Literacy",
+            "Learning Agility":           "Adaptability & Flexibility",
+            "Logical Reasoning":          "Critical Thinking & Problem Solving",
+            "Numerical Comfort":          "Financial Literacy",
+            "Practical Problem Solving":  "Critical Thinking & Problem Solving",
+            "Self-Discipline":            "Productivity",
+            "Systems Thinking":           "Decision-Making",
+            "Time Management":            "Time Management",
+        }
+
+        # Step 3: load all AQ weights and compute weighted score per AQ
+        aq_weight_rows = self.db.execute(text("""
+            SELECT aq_code, student_skill, weight
+            FROM aq_student_skill_weight
+        """)).fetchall()
+
+        aq_score_map: dict = {}
+        aq_weight_sum: dict = {}
+        for r in aq_weight_rows:
+            aq_skill = next(
+                (k for k, v in AQ_SKILL_TO_STUDENT.items() if v == r.student_skill),
+                None,
+            )
+            score = aq_skill_scores.get(aq_skill, 0) if aq_skill else 0
+            aq = r.aq_code
+            aq_score_map[aq] = aq_score_map.get(aq, 0) + score * float(r.weight)
+            aq_weight_sum[aq] = aq_weight_sum.get(aq, 0) + float(r.weight)
+
+        # Step 4: apply to aq_influences
+        for aq, total in aq_score_map.items():
+            if aq in aq_influences and aq_weight_sum.get(aq, 0) > 0:
+                aq_influences[aq]["student_score"] = round(
+                    total / aq_weight_sum[aq], 1
                 )
 
         # Sort and format output
