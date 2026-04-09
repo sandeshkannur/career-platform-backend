@@ -234,6 +234,29 @@ def get_platform_analytics(
     except Exception as e:
         error_log.append(f"career_frequency: {e}")
 
+    # ── Career tier stats ─────────────────────────────────────────────────────
+    career_tier_stats = []
+    try:
+        rows = db.execute(text("""
+            SELECT
+              career_tier,
+              is_active,
+              COUNT(*) AS count
+            FROM careers
+            GROUP BY career_tier, is_active
+            ORDER BY career_tier, is_active DESC
+        """)).mappings().all()
+        career_tier_stats = [
+            {
+                "career_tier": r["career_tier"],
+                "is_active":   bool(r["is_active"]),
+                "count":       _i(r["count"]),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        error_log.append(f"career_tier_stats: {e}")
+
     # ── Rank 1 careers ────────────────────────────────────────────────────────
     rank1_careers = []
     try:
@@ -455,6 +478,7 @@ def get_platform_analytics(
         "response_patterns":      response_patterns,
         "skill_stats":            skill_stats,
         "career_frequency":       career_frequency,
+        "career_tier_stats":      career_tier_stats,
         "rank1_careers":          rank1_careers,
         "cluster_distribution":   cluster_distribution,
         "stream_distribution":    stream_distribution,
