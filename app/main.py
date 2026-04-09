@@ -199,6 +199,10 @@ def create_app() -> FastAPI:
     from app.routers.admin_analytics import router as admin_analytics_router
     api_v1.include_router(admin_analytics_router, prefix="/admin-analytics", tags=["Admin Analytics"])
 
+    # Admin student drill-down analytics
+    from app.routers.admin_student_analytics import router as admin_student_analytics_router
+    api_v1.include_router(admin_student_analytics_router, prefix="/admin-student-analytics", tags=["Admin Student Analytics"])
+
     # ✅ B5: student random question delivery
     api_v1.include_router(questions_random_router, prefix="", tags=["Questions"])               # → /v1/questions/random
 
