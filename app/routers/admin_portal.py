@@ -564,3 +564,288 @@ def get_mapping_health(
             "tier4_inactive": _safe_int(row["tier4_inactive"]) or 0,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 1 (CRUD) — POST /v1/admin-portal/career-clusters
+# ---------------------------------------------------------------------------
+
+@router.post("/career-clusters")
+def create_cluster(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    existing = db.execute(text(
+        "SELECT id FROM career_clusters WHERE LOWER(name) = LOWER(:name)"
+    ), {"name": name}).fetchone()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Cluster '{name}' already exists")
+    result = db.execute(text("""
+        INSERT INTO career_clusters (name, description)
+        VALUES (:name, :desc) RETURNING id, name, description
+    """), {"name": name, "desc": (body.get("description") or "").strip()})
+    db.commit()
+    row = result.fetchone()
+    return {"id": row.id, "name": row.name, "description": row.description, "created": True}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 2 (CRUD) — POST /v1/admin-portal/careers
+# ---------------------------------------------------------------------------
+
+@router.post("/careers")
+def create_career(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    title = (body.get("title") or "").strip()
+    career_code = (body.get("career_code") or "").strip().upper()
+    cluster_id = body.get("cluster_id") or None
+    career_tier = int(body.get("career_tier") or 1)
+    description = (body.get("description") or "").strip()
+
+    if not title:
+        raise HTTPException(status_code=422, detail="title is required")
+    if not career_code:
+        raise HTTPException(status_code=422, detail="career_code is required")
+    if career_tier not in [1, 2, 3, 4]:
+        raise HTTPException(status_code=422, detail="career_tier must be 1-4")
+
+    dup = db.execute(text(
+        "SELECT id FROM careers WHERE career_code = :code"
+    ), {"code": career_code}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail=f"career_code '{career_code}' already exists")
+
+    result = db.execute(text("""
+        INSERT INTO careers (title, description, career_code, cluster_id, is_active, career_tier)
+        VALUES (:title, :desc, :code, :cluster_id, TRUE, :tier)
+        RETURNING id, title, career_code, cluster_id, is_active, career_tier
+    """), {"title": title, "desc": description, "code": career_code,
+           "cluster_id": cluster_id, "tier": career_tier})
+    db.commit()
+    row = result.fetchone()
+
+    cluster_name = None
+    if row.cluster_id:
+        cc = db.execute(text("SELECT name FROM career_clusters WHERE id = :id"),
+                        {"id": row.cluster_id}).fetchone()
+        cluster_name = cc.name if cc else None
+
+    return {
+        "id": row.id, "title": row.title, "career_code": row.career_code,
+        "cluster_id": row.cluster_id, "cluster_name": cluster_name,
+        "is_active": row.is_active, "career_tier": row.career_tier, "created": True,
+        "next_steps": "Use Bulk Upload to add career_content (salary, pathways) and skill weights",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 3 (CRUD) — POST /v1/admin-portal/key-skills
+# ---------------------------------------------------------------------------
+
+@router.post("/key-skills")
+def create_keyskill(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    dup = db.execute(text(
+        "SELECT id FROM keyskills WHERE LOWER(name) = LOWER(:name)"
+    ), {"name": name}).fetchone()
+    if dup:
+        raise HTTPException(status_code=409, detail=f"Key skill '{name}' already exists")
+
+    result = db.execute(text("""
+        INSERT INTO keyskills (name, description, cluster_id)
+        VALUES (:name, :desc, :cluster_id) RETURNING id, name, description, cluster_id
+    """), {"name": name, "desc": (body.get("description") or None),
+           "cluster_id": body.get("cluster_id") or None})
+    db.commit()
+    row = result.fetchone()
+    return {"id": row.id, "name": row.name, "description": row.description,
+            "cluster_id": row.cluster_id, "created": True}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 4 (CRUD) — POST /v1/admin-portal/mappings/career-keyskill
+# ---------------------------------------------------------------------------
+
+@router.post("/mappings/career-keyskill")
+def create_mapping(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    career_id = body.get("career_id")
+    keyskill_id = body.get("keyskill_id")
+    weight = int(body.get("weight_percentage") or 0)
+
+    if not career_id:
+        raise HTTPException(status_code=422, detail="career_id is required")
+    if not keyskill_id:
+        raise HTTPException(status_code=422, detail="keyskill_id is required")
+    if not (0 <= weight <= 100):
+        raise HTTPException(status_code=422, detail="weight_percentage must be 0-100")
+
+    career = db.execute(text("SELECT title FROM careers WHERE id = :id"),
+                        {"id": career_id}).fetchone()
+    if not career:
+        raise HTTPException(status_code=404, detail=f"Career ID {career_id} not found")
+    ks = db.execute(text("SELECT name FROM keyskills WHERE id = :id"),
+                    {"id": keyskill_id}).fetchone()
+    if not ks:
+        raise HTTPException(status_code=404, detail=f"Key skill ID {keyskill_id} not found")
+
+    db.execute(text("""
+        INSERT INTO career_keyskill_association (career_id, keyskill_id, weight_percentage)
+        VALUES (:cid, :kid, :w)
+        ON CONFLICT (career_id, keyskill_id) DO UPDATE SET weight_percentage = :w
+    """), {"cid": career_id, "kid": keyskill_id, "w": weight})
+    db.commit()
+
+    return {"career_id": career_id, "career_title": career.title,
+            "keyskill_id": keyskill_id, "keyskill_name": ks.name,
+            "weight_percentage": weight, "created": True}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 5 — GET /v1/admin-portal/student-skills
+# ---------------------------------------------------------------------------
+
+@router.get("/student-skills")
+def get_student_skills(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """
+    Returns all 24 canonical student skills.
+    engine_key (skills.name) is READ ONLY — never change it.
+    student_skill_name is the display label — editable.
+    """
+    rows = db.execute(text("""
+        SELECT
+            sk.id,
+            sk.name AS engine_key,
+            sk.student_skill_name,
+            COUNT(DISTINCT CASE WHEN css.weight > 0 THEN css.career_id END) AS careers_using,
+            ROUND(COALESCE(AVG(CASE WHEN css.weight > 0 THEN css.weight END), 0)::numeric, 2)
+                AS avg_career_weight,
+            COUNT(DISTINCT asw.aq_code) AS aq_count,
+            STRING_AGG(DISTINCT asw.aq_code, ', ' ORDER BY asw.aq_code) AS feeding_aqs
+        FROM skills sk
+        LEFT JOIN career_student_skill css ON css.student_skill = sk.name
+        LEFT JOIN aq_student_skill_weight asw ON asw.student_skill = sk.student_skill_name
+        GROUP BY sk.id, sk.name, sk.student_skill_name
+        ORDER BY sk.name
+    """)).fetchall()
+
+    skills = [
+        {
+            "id":                 r.id,
+            "engine_key":         r.engine_key,
+            "student_skill_name": r.student_skill_name,
+            "careers_using":      r.careers_using or 0,
+            "avg_career_weight":  float(r.avg_career_weight or 0),
+            "aq_count":           r.aq_count or 0,
+            "feeding_aqs":        r.feeding_aqs or "None",
+            "is_orphan":          (r.aq_count or 0) == 0,
+        }
+        for r in rows
+    ]
+
+    return {
+        "skills":        skills,
+        "total":         len(skills),
+        "orphan_count":  sum(1 for s in skills if s["is_orphan"]),
+        "active_count":  sum(1 for s in skills if not s["is_orphan"]),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 6 — PATCH /v1/admin-portal/student-skills/{skill_id}
+# ---------------------------------------------------------------------------
+
+@router.patch("/student-skills/{skill_id}")
+def update_student_skill_label(
+    skill_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """Update student_skill_name only. skills.name is NEVER changed."""
+    student_skill_name = (body.get("student_skill_name") or "").strip()
+    if not student_skill_name:
+        raise HTTPException(status_code=422, detail="student_skill_name is required")
+
+    existing = db.execute(text(
+        "SELECT id, name FROM skills WHERE id = :id"
+    ), {"id": skill_id}).fetchone()
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Skill ID {skill_id} not found")
+
+    db.execute(text(
+        "UPDATE skills SET student_skill_name = :sn WHERE id = :id"
+    ), {"sn": student_skill_name, "id": skill_id})
+    db.commit()
+
+    return {
+        "id":                 skill_id,
+        "engine_key":         existing.name,
+        "student_skill_name": student_skill_name,
+        "updated":            True,
+        "note":               "engine_key (skills.name) was NOT changed — it is immutable",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 7 — GET /v1/admin-portal/student-skills/{skill_id}/careers
+# ---------------------------------------------------------------------------
+
+@router.get("/student-skills/{skill_id}/careers")
+def get_skill_careers(
+    skill_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """Returns all careers that use this student skill with their weights."""
+    skill = db.execute(text(
+        "SELECT name, student_skill_name FROM skills WHERE id = :id"
+    ), {"id": skill_id}).fetchone()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    rows = db.execute(text("""
+        SELECT c.id, c.title, cc.name AS cluster, css.weight, c.is_active
+        FROM career_student_skill css
+        JOIN careers c ON c.id = css.career_id
+        LEFT JOIN career_clusters cc ON cc.id = c.cluster_id
+        WHERE css.student_skill = :skill_name AND css.weight > 0
+        ORDER BY css.weight DESC, c.title
+    """), {"skill_name": skill.name}).fetchall()
+
+    return {
+        "skill_id":           skill_id,
+        "engine_key":         skill.name,
+        "student_skill_name": skill.student_skill_name,
+        "careers": [
+            {
+                "id":        r.id,
+                "title":     r.title,
+                "cluster":   r.cluster,
+                "weight":    float(r.weight),
+                "is_active": r.is_active,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
