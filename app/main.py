@@ -34,6 +34,7 @@ else:
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SKIP_DB_WAIT = os.getenv("SKIP_DB_WAIT", "0")
+DISABLE_DOCS = os.getenv("DISABLE_DOCS", "1")
 
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
@@ -70,7 +71,12 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------
     # 3A) FASTAPI APP CREATION + CORS (CONFIGURE ONCE)
     # ------------------------------------------------------------
-    app = FastAPI(title="Career Counseling API")
+    _docs_kwargs = (
+        {"docs_url": None, "redoc_url": None, "openapi_url": None}
+        if DISABLE_DOCS == "1"
+        else {}
+    )
+    app = FastAPI(title="Career Counseling API", **_docs_kwargs)
 
     # ✅ CORS (DEV)
     # Frontend uses credentials: "include" (cookie-ready refresh token architecture),
