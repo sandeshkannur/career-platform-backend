@@ -150,24 +150,72 @@ def render_text_with_slots(text: str, slots: dict) -> str:
 # Template-based explanation builders
 # --------------------------------------------------
 
-def fit_band_from_score(score: float) -> str:
+# --------------------------------------------------
+# Fit-band threshold cache
+# Loaded from fit_band_config table on first use.
+# Cleared by the admin PUT /fit-bands endpoint after saving.
+# Falls back to hardcoded values if table is empty or unreadable.
+# --------------------------------------------------
+
+_FALLBACK_THRESHOLDS: list[tuple[float, str]] = [
+    (80.0, "high_potential"),
+    (65.0, "strong"),
+    (50.0, "promising"),
+    (35.0, "developing"),
+    (0.0,  "exploring"),
+]
+
+# None = not yet loaded; list[tuple[min_score, band_key]] sorted descending
+_band_cache: list[tuple[float, str]] | None = None
+
+
+def _load_band_cache(db: Session) -> list[tuple[float, str]]:
+    """Query fit_band_config and return thresholds sorted descending by min_score."""
+    try:
+        rows = (
+            db.query(models.FitBandConfig)
+            .order_by(models.FitBandConfig.sort_order)
+            .all()
+        )
+        if rows:
+            return [(float(r.min_score), r.band_key) for r in rows]
+    except Exception:
+        pass  # table may not exist yet during initial migration
+    return []
+
+
+def clear_fit_band_cache() -> None:
+    """Called by the admin endpoint after updating fit_band_config rows."""
+    global _band_cache
+    _band_cache = None
+
+
+def fit_band_from_score(score: float, db: Session | None = None) -> str:
     """
-    PR37: 5-level student-facing fit band.
-    NOTE: thresholds are adjustable later; students see only band, not the number.
+    5-level student-facing fit band.
+    Thresholds are read from fit_band_config table (admin-adjustable),
+    cached in memory after first load. Falls back to hardcoded values
+    if the table is empty, missing, or unreadable — scoring never breaks.
     """
+    global _band_cache
+
     try:
         s = float(score)
     except (TypeError, ValueError):
         s = 0.0
 
-    if s >= 80:
-        return "high_potential"
-    if s >= 65:
-        return "strong"
-    if s >= 50:
-        return "promising"
-    if s >= 35:
-        return "developing"
+    # Populate cache on first call (or after cache clear)
+    if _band_cache is None:
+        if db is not None:
+            loaded = _load_band_cache(db)
+            _band_cache = loaded if loaded else list(_FALLBACK_THRESHOLDS)
+        else:
+            _band_cache = list(_FALLBACK_THRESHOLDS)
+
+    for min_score, band_key in _band_cache:
+        if s >= min_score:
+            return band_key
+
     return "exploring"
 
 def explain_cluster(cluster_obj, score, contributing_keyskills, band_breakdown):

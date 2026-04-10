@@ -344,6 +344,27 @@ class SkillKeySkillMap(Base):
     keyskill = relationship("KeySkill", backref="skill_maps")
 
 # ---------------------------
+# Fit band configuration (admin-adjustable thresholds)
+# ---------------------------
+
+class FitBandConfig(Base):
+    """
+    Admin-configurable thresholds for the 5-level fit band system.
+    fit_band_from_score() reads from this table at startup and caches
+    in memory; falls back to hardcoded values if the table is empty.
+    """
+    __tablename__ = "fit_band_config"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    band_key   = Column(String(50), nullable=False, unique=True)
+    label      = Column(String(80), nullable=False)
+    min_score  = Column(Float, nullable=False)
+    sort_order = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ---------------------------
 # PR21: i18n foundation models
 # ---------------------------
 
