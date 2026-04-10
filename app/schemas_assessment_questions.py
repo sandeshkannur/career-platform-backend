@@ -15,8 +15,8 @@ class AssessmentQuestionItemOut(BaseModel):
         ...,
         json_schema_extra={"example": "V1_Q12"},
     )
-    skill_id: int = Field(
-        ...,
+    skill_id: Optional[int] = Field(
+        None,
         json_schema_extra={"example": 1},
     )
     question_text: str = Field(

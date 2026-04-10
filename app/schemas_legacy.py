@@ -759,7 +759,7 @@ class FacetTagOut(BaseModel):
 class RandomQuestionItemOut(BaseModel):
     question_id: str
     question_code: str | None = None
-    skill_id: int
+    skill_id: Optional[int] = None
     question_text: str
     facet_tags: List[FacetTagOut] = Field(default_factory=list)
 
@@ -780,7 +780,7 @@ class RandomQuestionsResponse(BaseModel):
 class StudentQuestionItemOut(BaseModel):
     question_id: str = Field(..., json_schema_extra={"example": "V1_Q1"})
     question_code: str | None = None # canonical identifier (external)
-    skill_id: int = Field(..., json_schema_extra={"example": 1})
+    skill_id: Optional[int] = Field(None, json_schema_extra={"example": 1})
     question_text: str = Field(..., json_schema_extra={"example": "I enjoy solving logical puzzles."})
     facet_tags: List[FacetTagOut] = Field(default_factory=list)
 
