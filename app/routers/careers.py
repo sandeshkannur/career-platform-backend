@@ -1,12 +1,41 @@
 # backend/app/routers/careers.py
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from app import models, schemas, deps
 from app.auth.auth import get_current_user
+
+
+def _enrich_career(career: models.Career) -> dict:
+    """Flatten EN career_content fields into a Career response dict."""
+    en = next((c for c in career.content if c.lang == "en"), None)
+    return {
+        "id": career.id,
+        "title": career.title,
+        "career_code": career.career_code,
+        "description": (en.description if en and en.description else career.description),
+        "cluster_id": career.cluster_id,
+        "keyskills": [{"id": ks.id, "name": ks.name} for ks in career.keyskills],
+        # salary / market — live on careers table
+        "salary_entry_inr": career.salary_entry_inr,
+        "salary_mid_inr": career.salary_mid_inr,
+        "salary_peak_inr": career.salary_peak_inr,
+        "automation_risk": career.automation_risk,
+        "future_outlook": career.future_outlook,
+        "recommended_stream": career.recommended_stream,
+        # rich content — career_content EN row (None if missing)
+        "indian_job_title": en.indian_job_title if en else None,
+        "prestige_title": en.prestige_title if en else None,
+        "pathway_step1": en.pathway_step1 if en else None,
+        "pathway_step2": en.pathway_step2 if en else None,
+        "pathway_step3": en.pathway_step3 if en else None,
+        "pathway_accessible": en.pathway_accessible if en else None,
+        "pathway_premium": en.pathway_premium if en else None,
+        "pathway_earn_learn": en.pathway_earn_learn if en else None,
+    }
 
 router = APIRouter(
     prefix="/careers",
@@ -57,7 +86,15 @@ def create_career(
 # 📋 Get all careers (public)
 @router.get("", response_model=List[schemas.Career])
 def list_careers(db: Session = Depends(deps.get_db)):
-    return db.query(models.Career).all()
+    careers = (
+        db.query(models.Career)
+        .options(
+            selectinload(models.Career.content),
+            selectinload(models.Career.keyskills),
+        )
+        .all()
+    )
+    return [_enrich_career(c) for c in careers]
 
 # 🔍 Get a career by ID (public)
 @router.get("/{career_id}", response_model=schemas.Career)
@@ -65,13 +102,21 @@ def get_career(
     career_id: int,
     db: Session = Depends(deps.get_db),
 ):
-    career = db.get(models.Career, career_id)
+    career = (
+        db.query(models.Career)
+        .options(
+            selectinload(models.Career.content),
+            selectinload(models.Career.keyskills),
+        )
+        .filter(models.Career.id == career_id)
+        .first()
+    )
     if not career:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Career not found",
         )
-    return career
+    return _enrich_career(career)
 
 # 🔄 Update a career
 @router.put(
