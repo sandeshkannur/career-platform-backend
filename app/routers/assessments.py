@@ -1507,11 +1507,12 @@ def get_assessment_questions(
             text_in_lang = getattr(q, "question_text_en", "") or ""
             lang_used = "en"
 
+        is_student = getattr(current_user, "role", "student") == "student"
         questions_out.append(
             {
                 "question_id": str(q.id),
                 "question_code": aq.question_code or q.question_code or "",
-                "skill_id": q.skill_id,
+                **({"skill_id": q.skill_id} if not is_student else {}),
                 "question_text": text_in_lang,
                 "facet_tags": facet_tags_by_qid.get(q.id, []),
                 "chapter_id": getattr(q, "chapter_id", None),

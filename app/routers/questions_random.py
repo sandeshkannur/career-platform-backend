@@ -97,11 +97,12 @@ def get_random_questions(
         if text_in_lang is None or (isinstance(text_in_lang, str) and text_in_lang.strip() == ""):
             text_in_lang = q.question_text_en
 
+        is_student = getattr(user, "role", "student") == "student"
         questions_out.append(
             RandomQuestionItemOut(
                 question_id=str(q.id),
                 question_code=q.question_code,
-                skill_id=q.skill_id,
+                skill_id=None if is_student else q.skill_id,
                 question_text=text_in_lang,
             )
         )

@@ -152,11 +152,12 @@ def get_localized_questions(
 
         if lang_used == requested_lang:
             lang_used_overall = requested_lang
+        is_student = getattr(user, "role", "student") == "student"
         questions_out.append(
             StudentQuestionItemOut(
                 question_id=str(q.id),  # ✅ must be string for schema
                 question_code=q.question_code,
-                skill_id=q.skill_id,
+                skill_id=None if is_student else q.skill_id,
                 facet_tags=qid_to_facets.get(q.id, []),
                 question_text=text_in_lang,
             )
@@ -208,6 +209,7 @@ def get_question_pool(
         if lang_used == requested_lang:
             lang_used_overall = requested_lang
 
+        is_student = getattr(user, "role", "student") == "student"
         items.append(
             {
                 "question_id": str(q.id),
@@ -215,7 +217,7 @@ def get_question_pool(
                 "assessment_version": q.assessment_version,
                 "lang": lang,
                 "lang_used": lang_used,
-                "skill_id": q.skill_id,
+                **({"skill_id": q.skill_id} if not is_student else {}),
                 "facet_tags": qid_to_facets.get(q.id, []),
                 "question_text": text_in_lang,
             }
@@ -269,13 +271,14 @@ def get_question_by_id(
         requested_lang=requested_lang,
     )
 
+    is_student = getattr(user, "role", "student") == "student"
     payload = {
         "question_id": str(q.id),                 # keep as string (matches your response submit schema style)
         "question_code": q.question_code,
         "assessment_version": q.assessment_version,
         "lang": lang,
         "lang_used": lang_used,
-        "skill_id": q.skill_id,                   # legacy field (already used in your StudentQuestionItemOut)
+        **({"skill_id": q.skill_id} if not is_student else {}),
         "facet_tags": qid_to_facets.get(q.id, []),
         "question_text": text_in_lang,
     }
