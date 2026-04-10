@@ -33,4 +33,4 @@ def list_aqs(db: Session = Depends(get_db)):
         .order_by(models.AssociatedQuality.aq_id)
         .all()
     )
-    return [AQOut(aq_code=r.aq_id, aq_name=r.aq_name) for r in rows]
+    return [AQOut(aq_code=r.aq_id, aq_name=r.aq_name, domain=r.domain) for r in rows]

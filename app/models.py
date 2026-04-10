@@ -690,6 +690,7 @@ class AssociatedQuality(Base):
 
     aq_id = Column(String, primary_key=True, index=True)   # e.g., "AQ_01"
     aq_name = Column(String, nullable=False)               # e.g., "Curiosity Drive"
+    domain = Column(String(50), nullable=True)             # e.g., "Cognitive"
 
     facets = relationship("AQFacet", back_populates="aq", cascade="all, delete-orphan")
 
