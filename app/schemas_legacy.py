@@ -232,9 +232,26 @@ class CareerCreate(BaseModel):
 class Career(BaseModel):
     id: int
     title: str
+    career_code: Optional[str] = None
     description: Optional[str] = None
     cluster_id: Optional[int] = None
     keyskills: List[KeySkillBase] = Field(default_factory=list)
+    # Market / salary fields (from careers table)
+    salary_entry_inr: Optional[int] = None
+    salary_mid_inr: Optional[int] = None
+    salary_peak_inr: Optional[int] = None
+    automation_risk: Optional[str] = None
+    future_outlook: Optional[str] = None
+    recommended_stream: Optional[str] = None
+    # Rich content fields (from career_content, lang="en")
+    indian_job_title: Optional[str] = None
+    prestige_title: Optional[str] = None
+    pathway_step1: Optional[str] = None
+    pathway_step2: Optional[str] = None
+    pathway_step3: Optional[str] = None
+    pathway_accessible: Optional[str] = None
+    pathway_premium: Optional[str] = None
+    pathway_earn_learn: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
