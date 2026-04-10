@@ -16,7 +16,7 @@ Sub-modules:
 from fastapi import APIRouter, Depends
 from app.auth.auth import require_role
 
-from app.routers.admin import ingest, questions, users, validation, sme, submissions, aqs
+from app.routers.admin import ingest, questions, users, validation, sme, submissions, aqs, careers_bulk
 
 # Top-level router — all sub-routers inherit the admin role gate
 router = APIRouter(
@@ -31,3 +31,4 @@ router.include_router(validation.router)
 router.include_router(sme.router)
 router.include_router(submissions.router)
 router.include_router(aqs.router)
+router.include_router(careers_bulk.router)
