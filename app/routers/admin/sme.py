@@ -1,10 +1,11 @@
 """
 Admin SME (Subject Matter Expert) router.
-Exposes 4 endpoints under /v1/admin/sme/:
+Exposes 5 endpoints under /v1/admin/sme/:
+  GET    /admin/sme            — list all SME profiles (search + filter)
+  GET    /admin/sme/{id}       — get single SME profile
   POST   /admin/sme            — create a new SME profile
-  GET    /admin/sme            — list all SME profiles (filterable by status)
-  PUT    /admin/sme/{sme_id}   — update an existing SME profile
-  DELETE /admin/sme/{sme_id}   — soft-deactivate an SME (sets status=inactive)
+  PUT    /admin/sme/{id}       — update an existing SME profile
+  DELETE /admin/sme/{id}       — soft-deactivate (sets status=inactive)
 
 Role gate: admin only (inherited from router dependency).
 Reads/writes: sme_profiles table.
@@ -35,58 +36,80 @@ router = APIRouter(
 
 
 # ============================================================
-# Pydantic schemas — local to this router (SME-specific only)
+# Pydantic schemas
 # ============================================================
 
-class SMECreateRequest(BaseModel):
-    """Input schema for creating a new SME profile."""
-    full_name:        str            = Field(..., min_length=2, max_length=200)
-    email:            EmailStr
-    career_assignments: Optional[str] = Field(None, description="Comma-separated career IDs. Max 3 careers.")
-    years_experience: Optional[int]  = Field(None, ge=0, le=60)
-    seniority_score:  Optional[float]= Field(None, ge=0.0, le=1.0)
-    education_score:  Optional[float]= Field(None, ge=0.0, le=1.0)
-    sector_relevance: Optional[float]= Field(None, ge=0.0, le=1.0)
-    sector:           Optional[str]  = Field(None, max_length=200)
-    education:        Optional[str]  = Field(None, max_length=200)
+class SMEProfileCreate(BaseModel):
+    full_name:          str            = Field(..., min_length=2, max_length=200)
+    email:              EmailStr
+    phone:              Optional[str]  = Field(None, max_length=50)
+    organization:       Optional[str]  = Field(None, max_length=200)
+    designation:        Optional[str]  = Field(None, max_length=200)
+    expertise_domain:   Optional[str]  = Field(None, max_length=100)
+    career_assignments: Optional[str]  = Field(None, description="Comma-separated career IDs. Length <= max_careers.")
+    max_careers:        int            = Field(3, ge=1, le=10)
+    years_experience:   Optional[int]  = Field(None, ge=0, le=60)
+    seniority_score:    Optional[float]= Field(None, ge=0.0, le=1.0)
+    education_score:    Optional[float]= Field(None, ge=0.0, le=1.0)
+    sector_relevance:   Optional[float]= Field(None, ge=0.0, le=1.0)
+    sector:             Optional[str]  = Field(None, max_length=200)
+    education:          Optional[str]  = Field(None, max_length=200)
+    notes:              Optional[str]  = None
 
 
-class SMEUpdateRequest(BaseModel):
-    """Input schema for updating an existing SME profile. All fields optional."""
-    full_name:         Optional[str]   = Field(None, min_length=2, max_length=200)
-    career_assignments:Optional[str]   = None
-    years_experience:  Optional[int]   = Field(None, ge=0, le=60)
-    seniority_score:   Optional[float] = Field(None, ge=0.0, le=1.0)
-    education_score:   Optional[float] = Field(None, ge=0.0, le=1.0)
-    sector_relevance:  Optional[float] = Field(None, ge=0.0, le=1.0)
-    sector:            Optional[str]   = Field(None, max_length=200)
-    education:         Optional[str]   = Field(None, max_length=200)
+class SMEProfileUpdate(BaseModel):
+    full_name:          Optional[str]  = Field(None, min_length=2, max_length=200)
+    phone:              Optional[str]  = Field(None, max_length=50)
+    organization:       Optional[str]  = Field(None, max_length=200)
+    designation:        Optional[str]  = Field(None, max_length=200)
+    expertise_domain:   Optional[str]  = Field(None, max_length=100)
+    career_assignments: Optional[str]  = None
+    max_careers:        Optional[int]  = Field(None, ge=1, le=10)
+    years_experience:   Optional[int]  = Field(None, ge=0, le=60)
+    seniority_score:    Optional[float]= Field(None, ge=0.0, le=1.0)
+    education_score:    Optional[float]= Field(None, ge=0.0, le=1.0)
+    sector_relevance:   Optional[float]= Field(None, ge=0.0, le=1.0)
+    sector:             Optional[str]  = Field(None, max_length=200)
+    education:          Optional[str]  = Field(None, max_length=200)
+    notes:              Optional[str]  = None
 
 
-class SMEResponse(BaseModel):
-    """Output schema for a single SME profile."""
-    id:                int
-    full_name:         str
-    email:             str
-    career_assignments:Optional[str]
-    years_experience:  Optional[int]
-    seniority_score:   Optional[float]
-    education_score:   Optional[float]
-    sector_relevance:  Optional[float]
-    credentials_score: Optional[float]
-    calibration_score: Optional[float]
-    submission_count:  int
-    sector:            Optional[str]
-    education:         Optional[str]
-    status:            str
+class SMEProfileOut(BaseModel):
+    id:                 int
+    full_name:          str
+    email:              str
+    phone:              Optional[str]
+    organization:       Optional[str]
+    designation:        Optional[str]
+    expertise_domain:   Optional[str]
+    career_assignments: Optional[str]
+    max_careers:        int
+    years_experience:   Optional[int]
+    seniority_score:    Optional[float]
+    education_score:    Optional[float]
+    sector_relevance:   Optional[float]
+    credentials_score:  Optional[float]
+    calibration_score:  Optional[float]
+    submission_count:   int
+    sector:             Optional[str]
+    education:          Optional[str]
+    notes:              Optional[str]
+    status:             str
+    is_active:          bool
 
     model_config = {"from_attributes": True}
 
+    @classmethod
+    def from_orm_row(cls, sme: SMEProfile) -> "SMEProfileOut":
+        data = {c.name: getattr(sme, c.name) for c in sme.__table__.columns}
+        data["is_active"] = sme.status == "active"
+        return cls(**data)
+
 
 # ============================================================
-# Helper: compute credentials_score from the 4 input fields
+# Helper: compute credentials_score
 # Formula: (years×0.4) + (seniority×0.3) + (education×0.2) + (sector×0.1)
-# Returns None if all 4 inputs are None (profile not yet scored).
+# Returns None only if all 4 inputs are None.
 # ============================================================
 
 def _compute_credentials_score(
@@ -95,18 +118,10 @@ def _compute_credentials_score(
     education_score:   Optional[float],
     sector_relevance:  Optional[float],
 ) -> Optional[float]:
-    """
-    Compute the credential score from the 4 weighting inputs.
-    Missing inputs are treated as 0.0 so partial profiles still get a score.
-    Returns None only if ALL four inputs are None (profile has no data yet).
-    """
     if all(v is None for v in [years_experience, seniority_score,
                                 education_score, sector_relevance]):
         return None
-
-    # Normalise years_experience to 0.0–1.0 (cap at 30 years = 1.0)
     years_norm = min((years_experience or 0) / 30.0, 1.0)
-
     score = (
         years_norm                  * 0.4
         + (seniority_score  or 0.0) * 0.3
@@ -116,212 +131,182 @@ def _compute_credentials_score(
     return round(score, 4)
 
 
+def _career_count(career_assignments: Optional[str]) -> int:
+    if not career_assignments:
+        return 0
+    return len([c for c in career_assignments.split(",") if c.strip()])
+
+
 # ============================================================
-# Endpoint 1: Create SME profile
-# Purpose:    Register a new Subject Matter Expert in the system
-# Input:      JSON body — SMECreateRequest
-# Writes:     sme_profiles table (1 new row)
-# Idempotent: No — duplicate email returns 400
+# GET /sme — list with search + filters
 # ============================================================
 
-@router.post(
-    "/sme",
-    response_model=SMEResponse,
-    status_code=201,
-    summary="ADM-B01: Create a new SME profile",
-)
-def create_sme(
-    payload: SMECreateRequest,
+@router.get("/sme", response_model=List[SMEProfileOut], summary="List SME profiles")
+def list_smes(
+    search:           Optional[str]  = Query(None, description="Search by name or email (case-insensitive)"),
+    is_active:        Optional[bool] = Query(None, description="Filter by active status"),
+    expertise_domain: Optional[str]  = Query(None, description="Filter by expertise_domain (exact, case-insensitive)"),
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_active_user),
+    _=Depends(get_current_active_user),
 ):
-    """
-    Create a new SME profile.
-    Automatically computes credentials_score from the 4 weighting inputs.
-    calibration_score starts as None — set by aggregation service after first round.
-    Returns 400 if email already exists (active or inactive).
-    """
-    # Guard: unique email across all statuses (active + inactive)
+    q = db.query(SMEProfile)
+
+    if is_active is not None:
+        q = q.filter(SMEProfile.status == ("active" if is_active else "inactive"))
+
+    if expertise_domain:
+        q = q.filter(SMEProfile.expertise_domain.ilike(expertise_domain))
+
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(
+            (SMEProfile.full_name.ilike(pattern)) | (SMEProfile.email.ilike(pattern))
+        )
+
+    rows = q.order_by(SMEProfile.full_name).all()
+    return [SMEProfileOut.from_orm_row(r) for r in rows]
+
+
+# ============================================================
+# GET /sme/{id} — single profile
+# ============================================================
+
+@router.get("/sme/{sme_id}", response_model=SMEProfileOut, summary="Get single SME profile")
+def get_sme(
+    sme_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    sme = db.query(SMEProfile).filter(SMEProfile.id == sme_id).first()
+    if not sme:
+        raise HTTPException(status_code=404, detail=f"SME id={sme_id} not found.")
+    return SMEProfileOut.from_orm_row(sme)
+
+
+# ============================================================
+# POST /sme — create
+# ============================================================
+
+@router.post("/sme", response_model=SMEProfileOut, status_code=201, summary="Create SME profile")
+def create_sme(
+    payload: SMEProfileCreate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
     existing = db.query(SMEProfile).filter(SMEProfile.email == payload.email).first()
     if existing:
         raise HTTPException(
             status_code=400,
             detail=f"SME with email '{payload.email}' already exists (status: {existing.status}). "
-                   "Use PUT /admin/sme/{id} to reactivate or update.",
+                   "Use PUT /admin/sme/{id} to update.",
         )
 
-    # Validate career assignment cap (max 3 careers per SME)
-    if payload.career_assignments:
-        career_ids = [c.strip() for c in payload.career_assignments.split(",") if c.strip()]
-        if len(career_ids) > 3:
-            raise HTTPException(
-                status_code=400,
-                detail=f"SME may be assigned to a maximum of 3 careers. Got {len(career_ids)}.",
-            )
+    count = _career_count(payload.career_assignments)
+    if count > payload.max_careers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"career_assignments has {count} entries but max_careers={payload.max_careers}.",
+        )
 
-    # Compute credentials_score from inputs
     credentials_score = _compute_credentials_score(
-        payload.years_experience,
-        payload.seniority_score,
-        payload.education_score,
-        payload.sector_relevance,
+        payload.years_experience, payload.seniority_score,
+        payload.education_score,  payload.sector_relevance,
     )
 
     sme = SMEProfile(
         full_name=payload.full_name,
         email=payload.email,
+        phone=payload.phone,
+        organization=payload.organization,
+        designation=payload.designation,
+        expertise_domain=payload.expertise_domain,
         career_assignments=payload.career_assignments,
+        max_careers=payload.max_careers,
         years_experience=payload.years_experience,
         seniority_score=payload.seniority_score,
         education_score=payload.education_score,
         sector_relevance=payload.sector_relevance,
         credentials_score=credentials_score,
-        calibration_score=None,  # set by ADM-B03 aggregation service
+        calibration_score=None,
         submission_count=0,
         sector=payload.sector,
         education=payload.education,
+        notes=payload.notes,
         status="active",
     )
 
     db.add(sme)
     db.commit()
     db.refresh(sme)
-
-    logger.info("SME created: id=%s email=%s credentials_score=%s",
-                sme.id, sme.email, sme.credentials_score)
-    return sme
+    logger.info("SME created: id=%s email=%s", sme.id, sme.email)
+    return SMEProfileOut.from_orm_row(sme)
 
 
 # ============================================================
-# Endpoint 2: List SME profiles
-# Purpose:    Return all SME profiles, optionally filtered by status
-# Input:      Query param ?status=active|inactive (default: all)
-# Reads:      sme_profiles table
-# Idempotent: Yes — read-only
+# PUT /sme/{id} — update
 # ============================================================
 
-@router.get(
-    "/sme",
-    response_model=List[SMEResponse],
-    summary="ADM-B01: List all SME profiles",
-)
-def list_smes(
-    status: Optional[str] = Query(
-        None,
-        description="Filter by status: 'active' or 'inactive'. Omit for all.",
-    ),
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_active_user),
-):
-    """
-    Return all SME profiles.
-    Use ?status=active to show only active SMEs.
-    Use ?status=inactive to show deactivated SMEs.
-    Omit the parameter to return all regardless of status.
-    """
-    query = db.query(SMEProfile)
-    if status:
-        if status not in ("active", "inactive"):
-            raise HTTPException(
-                status_code=400,
-                detail="status must be 'active' or 'inactive'",
-            )
-        query = query.filter(SMEProfile.status == status)
-
-    return query.order_by(SMEProfile.full_name).all()
-
-
-# ============================================================
-# Endpoint 3: Update SME profile
-# Purpose:    Update any field on an existing SME profile
-# Input:      JSON body — SMEUpdateRequest (all fields optional)
-# Writes:     sme_profiles table (1 row updated)
-# Idempotent: Yes — same payload produces same result
-# ============================================================
-
-@router.put(
-    "/sme/{sme_id}",
-    response_model=SMEResponse,
-    summary="ADM-B01: Update an existing SME profile",
-)
+@router.put("/sme/{sme_id}", response_model=SMEProfileOut, summary="Update SME profile")
 def update_sme(
     sme_id: int,
-    payload: SMEUpdateRequest,
+    payload: SMEProfileUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_active_user),
+    _=Depends(get_current_active_user),
 ):
-    """
-    Update an SME profile by ID.
-    Credential inputs (years, seniority, education, sector) automatically
-    recompute credentials_score when any of them change.
-    calibration_score is NOT touched here — managed by ADM-B03 only.
-    Works on both active and inactive profiles.
-    """
     sme = db.query(SMEProfile).filter(SMEProfile.id == sme_id).first()
     if not sme:
         raise HTTPException(status_code=404, detail=f"SME id={sme_id} not found.")
 
-    # Apply only the fields that were provided
-    if payload.full_name is not None:
-        sme.full_name = payload.full_name
+    # Apply provided fields
+    simple_fields = (
+        "full_name", "phone", "organization", "designation",
+        "expertise_domain", "notes", "sector", "education",
+        "years_experience", "seniority_score", "education_score", "sector_relevance",
+    )
+    for field in simple_fields:
+        val = getattr(payload, field, None)
+        if val is not None:
+            setattr(sme, field, val)
+
+    if payload.max_careers is not None:
+        sme.max_careers = payload.max_careers
+
     if payload.career_assignments is not None:
-        career_ids = [c.strip() for c in payload.career_assignments.split(",") if c.strip()]
-        if len(career_ids) > 3:
+        cap = payload.max_careers if payload.max_careers is not None else sme.max_careers
+        count = _career_count(payload.career_assignments)
+        if count > cap:
             raise HTTPException(
                 status_code=400,
-                detail=f"SME may be assigned to a maximum of 3 careers. Got {len(career_ids)}.",
+                detail=f"career_assignments has {count} entries but max_careers={cap}.",
             )
         sme.career_assignments = payload.career_assignments
-    if payload.years_experience is not None:
-        sme.years_experience = payload.years_experience
-    if payload.seniority_score is not None:
-        sme.seniority_score = payload.seniority_score
-    if payload.education_score is not None:
-        sme.education_score = payload.education_score
-    if payload.sector_relevance is not None:
-        sme.sector_relevance = payload.sector_relevance
-    if payload.sector is not None:
-        sme.sector = payload.sector
-    if payload.education is not None:
-        sme.education = payload.education
 
-    # Recompute credentials_score whenever any credential input changes
+    # Recompute credentials_score whenever credential inputs change
     sme.credentials_score = _compute_credentials_score(
-        sme.years_experience,
-        sme.seniority_score,
-        sme.education_score,
-        sme.sector_relevance,
+        sme.years_experience, sme.seniority_score,
+        sme.education_score,  sme.sector_relevance,
     )
 
     db.commit()
     db.refresh(sme)
-
     logger.info("SME updated: id=%s credentials_score=%s", sme.id, sme.credentials_score)
-    return sme
+    return SMEProfileOut.from_orm_row(sme)
 
 
 # ============================================================
-# Endpoint 4: Deactivate SME (soft delete)
-# Purpose:    Mark an SME as inactive — preserves audit trail
-# Input:      Path param sme_id
-# Writes:     sme_profiles table (status = 'inactive')
-# Idempotent: Yes — deactivating an already-inactive SME is a no-op
+# DELETE /sme/{id} — soft delete (status=inactive)
 # ============================================================
 
-@router.delete(
-    "/sme/{sme_id}",
-    summary="ADM-B01: Deactivate an SME profile (soft delete)",
-)
+@router.delete("/sme/{sme_id}", summary="Soft-delete SME profile (set is_active=false)")
 def deactivate_sme(
     sme_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_active_user),
+    _=Depends(get_current_active_user),
 ):
     """
-    Soft-deactivate an SME by setting status = 'inactive'.
-    The row is NEVER deleted — this preserves the audit trail
-    of which SMEs validated which careers and when.
-    Deactivating an already-inactive SME is a safe no-op.
+    Soft-deactivates an SME by setting status='inactive'.
+    The row is NEVER deleted — preserves audit trail for ADM-B03.
+    Idempotent: deactivating an already-inactive SME is a no-op.
     """
     sme = db.query(SMEProfile).filter(SMEProfile.id == sme_id).first()
     if not sme:
@@ -332,6 +317,5 @@ def deactivate_sme(
 
     sme.status = "inactive"
     db.commit()
-
     logger.info("SME deactivated: id=%s email=%s", sme.id, sme.email)
     return {"message": f"SME id={sme_id} ({sme.email}) deactivated successfully."}

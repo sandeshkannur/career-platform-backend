@@ -870,14 +870,23 @@ class SMEProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # ── Identity ──────────────────────────────────────────────────
-    full_name = Column(String(200), nullable=False)
-    email     = Column(String(200), unique=True, nullable=False, index=True)
+    full_name    = Column(String(200), nullable=False)
+    email        = Column(String(200), unique=True, nullable=False, index=True)
+    phone        = Column(String(50),  nullable=True)
+    organization = Column(String(200), nullable=True)
+    designation  = Column(String(200), nullable=True)
+
+    # ── Domain / expertise ────────────────────────────────────────
+    expertise_domain = Column(String(100), nullable=True, index=True)  # e.g. "STEM", "Business"
 
     # ── Career assignments ────────────────────────────────────────
-    # Comma-separated career IDs for now.
-    # Will be normalised to sme_career_assignments join table in ADM-B46.
-    # Hard cap: max 3 careers per SME to protect IP across career profiles.
+    # Comma-separated career IDs (legacy format; JSON list semantics).
+    # Hard cap: max_careers per SME (default 3) to protect IP.
     career_assignments = Column(Text, nullable=True)
+    max_careers        = Column(Integer, nullable=False, default=3)
+
+    # ── Admin notes ───────────────────────────────────────────────
+    notes = Column(Text, nullable=True)
 
     # ── Credential inputs (used to compute credentials_score) ─────
     # All scores are normalised 0.0 – 1.0 before storage.
