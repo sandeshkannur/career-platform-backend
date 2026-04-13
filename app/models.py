@@ -800,6 +800,34 @@ class QuestionStudentSkillWeight(Base):
     skill = relationship("Skill", backref="question_weights")
 
 # =========================================================
+# Admin Audit Trail — append-only log of admin actions
+# =========================================================
+
+class AdminAuditTrail(Base):
+    """
+    Immutable audit log of admin actions across all admin endpoints.
+
+    Design rules:
+    - APPEND-ONLY: application code must never UPDATE or DELETE rows.
+    - user_id / user_email are stamped at write time (denormalised for
+      durability — the record remains readable even if the user is deleted).
+    - details (JSON) stores old/new values or any context relevant to
+      the action; schema is free-form per action type.
+    """
+    __tablename__ = "admin_audit_trail"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    action      = Column(String(64),  nullable=False, index=True)   # create/update/delete/approve/reject/promote/rollback
+    entity_type = Column(String(64),  nullable=False, index=True)   # career/cluster/keyskill/sme_profile/…
+    entity_id   = Column(Integer,     nullable=True)
+    entity_name = Column(String(255), nullable=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_email  = Column(String(320), nullable=False)
+    details     = Column(JSON_TYPE,   nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+# =========================================================
 # CPS Factor Config — admin-adjustable weights for compute_cps_v1
 # =========================================================
 
