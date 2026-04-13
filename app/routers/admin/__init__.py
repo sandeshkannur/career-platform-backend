@@ -28,8 +28,8 @@ router.include_router(ingest.router)
 router.include_router(questions.router)
 router.include_router(users.router)
 router.include_router(validation.router)
-router.include_router(sme.router)
-router.include_router(submissions.router)
+router.include_router(submissions.router)  # static /sme/tokens, /sme/submit, /sme/aggregate before /{sme_id}
+router.include_router(sme.router)          # dynamic /sme/{sme_id} must come after all static /sme/... routes
 router.include_router(aqs.router)
 router.include_router(careers_bulk.router)
 router.include_router(fit_bands.router)
