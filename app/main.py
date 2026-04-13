@@ -245,6 +245,10 @@ def create_app() -> FastAPI:
         tags=["Interest Inventory"],
     )
 
+    # SME submissions
+    from app.routers.sme_admin import router as sme_admin_router
+    api_v1.include_router(sme_admin_router, prefix="/admin/sme", tags=["SME Submissions"])
+
     # --- Mount /v1 on app ---
     app.include_router(api_v1)
 

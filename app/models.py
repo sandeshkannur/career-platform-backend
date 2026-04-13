@@ -800,6 +800,106 @@ class QuestionStudentSkillWeight(Base):
     skill = relationship("Skill", backref="question_weights")
 
 # =========================================================
+# ADM-B01 / ADM-B02: SME Profile + Submission Pipeline
+# =========================================================
+
+class SMEProfile(Base):
+    """
+    Subject Matter Expert profile — one row per SME.
+
+    Weighting approach (Approach B — credentials × calibration composite):
+      credentials_score = (years_experience × 0.4) + (seniority_score × 0.3)
+                        + (education_score × 0.2)  + (sector_relevance × 0.1)
+      calibration_score = 1 - mean_absolute_deviation_from_group_median
+      effective_weight  = credentials_score × calibration_score  (never stored)
+
+    Deactivation rule: NEVER DELETE rows — set status = 'inactive'.
+    """
+    __tablename__ = "sme_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Identity
+    full_name    = Column(String(200), nullable=False, default="")
+    email        = Column(String(320), unique=True, nullable=False, index=True)
+    phone        = Column(String(50),  nullable=True)
+    organization = Column(String(200), nullable=True)
+    designation  = Column(String(200), nullable=True)
+
+    # Domain / expertise
+    expertise_domain = Column(String(100), nullable=True, index=True)
+
+    # Career assignments (comma-separated IDs, max_careers cap)
+    career_assignments = Column(Text, nullable=True)
+    max_careers        = Column(Integer, nullable=False, default=3)
+
+    # Admin notes
+    notes = Column(Text, nullable=True)
+
+    # Credential inputs (normalised 0.0–1.0)
+    years_experience  = Column(Integer, nullable=True)
+    seniority_score   = Column(Float,   nullable=True)
+    education_score   = Column(Float,   nullable=True)
+    sector_relevance  = Column(Float,   nullable=True)
+
+    # Computed credential score (recomputed on change)
+    credentials_score = Column(Float, nullable=True)
+
+    # Calibration score (set by aggregation service, ADM-B03)
+    calibration_score = Column(Float, nullable=True)
+
+    # Submission tracking
+    submission_count = Column(Integer, nullable=False, default=0)
+
+    # Context fields
+    sector    = Column(String(200), nullable=True)
+    education = Column(String(200), nullable=True)
+
+    # Lifecycle — use 'inactive' for deactivation, never delete
+    status    = Column(String(20), nullable=False, default="active", index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Audit timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_sme_profiles_email"),
+        Index("ix_sme_profiles_status", "status"),
+    )
+
+    submissions = relationship("SMESubmission", back_populates="sme_profile")
+
+
+class SMESubmission(Base):
+    """
+    SMESubmission — form responses submitted by SMEs for a specific career.
+
+    Key design notes:
+    - idempotency_key (unique) prevents duplicate submissions at DB level.
+    - sme_id is nullable: anonymous/unregistered SMEs submit without a profile row.
+    - If sme_email matches an existing sme_profiles row, sme_id is set automatically.
+    """
+    __tablename__ = "sme_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sme_id = Column(Integer, ForeignKey("sme_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    sme_email = Column(String(320), nullable=False, index=True)
+    career_id = Column(Integer, ForeignKey("careers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    submission_data = Column(JSON_TYPE, nullable=False)
+    idempotency_key = Column(String(255), unique=True, nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="received", index=True)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    sme_profile = relationship("SMEProfile", back_populates="submissions")
+    career = relationship("Career", backref="sme_submissions")
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# =========================================================
 # PR16: CMS-backed explainability content (versioned + locale-aware)
 # =========================================================
 
@@ -828,116 +928,6 @@ class ExplainabilityContent(Base):
 
     __table_args__ = (
         UniqueConstraint("version", "locale", "explanation_key", name="uq_explainability_content_v_l_k"),
-    )
-
-
-# =========================================================
-# ADM-B01: SME (Subject Matter Expert) Profile
-# Part of the A01 SME Validation & Expert Management section.
-#
-# Weighting approach: Approach B — credentials × calibration composite.
-#
-#   credentials_score = (years_experience × 0.4)
-#                     + (seniority_score   × 0.3)
-#                     + (education_score   × 0.2)
-#                     + (sector_relevance  × 0.1)
-#
-#   calibration_score = 1 - mean_absolute_deviation_from_group_median
-#                     (computed by aggregation service, stored here for audit)
-#
-#   effective_weight  = credentials_score × calibration_score
-#                     (never stored — always recomputed by ADM-B03 service)
-#
-# Deactivation rule: NEVER DELETE rows — set status = 'inactive'.
-# This preserves the full audit trail of who validated which careers.
-# =========================================================
-
-class SMEProfile(Base):
-    """
-    Subject Matter Expert profile — one row per SME.
-
-    Stores identity, career assignments, experience-based credential
-    inputs, and the calibration score computed after each submission
-    round by the weighted aggregation service (ADM-B03).
-
-    The effective_weight used in final career-AQ aggregation is:
-        effective_weight = credentials_score * calibration_score
-    This is never persisted here — it is computed fresh each time
-    so it always reflects the most recent calibration round.
-    """
-    __tablename__ = "sme_profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    # ── Identity ──────────────────────────────────────────────────
-    full_name    = Column(String(200), nullable=False)
-    email        = Column(String(200), unique=True, nullable=False, index=True)
-    phone        = Column(String(50),  nullable=True)
-    organization = Column(String(200), nullable=True)
-    designation  = Column(String(200), nullable=True)
-
-    # ── Domain / expertise ────────────────────────────────────────
-    expertise_domain = Column(String(100), nullable=True, index=True)  # e.g. "STEM", "Business"
-
-    # ── Career assignments ────────────────────────────────────────
-    # Comma-separated career IDs (legacy format; JSON list semantics).
-    # Hard cap: max_careers per SME (default 3) to protect IP.
-    career_assignments = Column(Text, nullable=True)
-    max_careers        = Column(Integer, nullable=False, default=3)
-
-    # ── Admin notes ───────────────────────────────────────────────
-    notes = Column(Text, nullable=True)
-
-    # ── Credential inputs (used to compute credentials_score) ─────
-    # All scores are normalised 0.0 – 1.0 before storage.
-    # Raw values (e.g. actual years) are in context_notes if needed.
-    years_experience  = Column(Integer, nullable=True)   # raw years (e.g. 12)
-    seniority_score   = Column(Float,   nullable=True)   # 0.0 – 1.0
-    education_score   = Column(Float,   nullable=True)   # 0.0 – 1.0
-    sector_relevance  = Column(Float,   nullable=True)   # 0.0 – 1.0
-
-    # ── Computed credential score ─────────────────────────────────
-    # credentials_score = (years×0.4) + (seniority×0.3)
-    #                   + (education×0.2) + (sector×0.1)
-    # Recomputed and stored whenever credential inputs change.
-    credentials_score = Column(Float, nullable=True)
-
-    # ── Calibration score (set by aggregation service, ADM-B03) ───
-    # calibration_score = 1 - mean_absolute_deviation_from_group_median
-    # Null until the SME has at least one completed submission round.
-    # Range: 0.0 (complete outlier) to 1.0 (perfect consensus alignment)
-    calibration_score = Column(Float, nullable=True)
-
-    # ── Submission tracking ───────────────────────────────────────
-    # Total career forms completed by this SME across all rounds.
-    # Used to give higher implicit trust to experienced SME respondents.
-    submission_count = Column(Integer, nullable=False, default=0)
-
-    # ── Context fields ────────────────────────────────────────────
-    sector    = Column(String(200), nullable=True)  # e.g. "Healthcare", "IT"
-    education = Column(String(200), nullable=True)  # e.g. "PhD Psychology"
-
-    # ── Lifecycle ─────────────────────────────────────────────────
-    # status: 'active' | 'inactive'
-    # Use 'inactive' for deactivation — NEVER DELETE rows.
-    status = Column(String(20), nullable=False, default="active", index=True)
-
-    # ── Audit timestamps ──────────────────────────────────────────
-    created_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-    __table_args__ = (
-        UniqueConstraint("email", name="uq_sme_profiles_email"),
-        Index("ix_sme_profiles_status", "status"),
     )
 
 
