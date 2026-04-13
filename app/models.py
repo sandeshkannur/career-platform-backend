@@ -800,6 +800,36 @@ class QuestionStudentSkillWeight(Base):
     skill = relationship("Skill", backref="question_weights")
 
 # =========================================================
+# CPS Factor Config — admin-adjustable weights for compute_cps_v1
+# =========================================================
+
+class CPSFactorConfig(Base):
+    """
+    Admin-configurable weights for the four Context Profile Score factors.
+
+    factor_key must be one of:
+      ses_band, education_board, support_level, resource_access
+
+    Weights across all 4 rows must sum to 1.0.
+    compute_cps_v1 reads from this table (cached) and falls back to
+    hardcoded defaults if the table is empty or unreadable.
+    """
+    __tablename__ = "cps_factor_config"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    factor_key = Column(String(64), unique=True, nullable=False, index=True)
+    label      = Column(String(200), nullable=False)
+    weight     = Column(Float, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("factor_key", name="uq_cps_factor_config_factor_key"),
+    )
+
+
+# =========================================================
 # ADM-B01 / ADM-B02: SME Profile + Submission Pipeline
 # =========================================================
 

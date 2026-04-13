@@ -1,6 +1,44 @@
 from sqlalchemy.orm import Session
 from app import models
 from collections import defaultdict
+from typing import Optional
+
+# =========================================================
+# CPS weight cache — mirrors fit_band_cache pattern in
+# app/services/explanations.py.
+#
+# None  = not yet loaded (first call triggers a DB read)
+# dict  = {factor_key: weight}, populated from cps_factor_config
+#
+# Falls back to hardcoded defaults if the table is empty,
+# missing, or throws — scoring NEVER breaks.
+# =========================================================
+
+_HARDCODED_CPS_WEIGHTS: dict[str, float] = {
+    "ses_band":        0.35,
+    "education_board": 0.25,
+    "support_level":   0.25,
+    "resource_access": 0.15,
+}
+
+_cps_weight_cache: Optional[dict[str, float]] = None
+
+
+def _load_cps_weights(db: Session) -> Optional[dict[str, float]]:
+    """Read cps_factor_config from DB. Returns None on any failure."""
+    try:
+        rows = db.query(models.CPSFactorConfig).all()
+        if rows:
+            return {r.factor_key: float(r.weight) for r in rows}
+    except Exception:
+        pass  # table may not exist during initial migration
+    return None
+
+
+def clear_cps_weight_cache() -> None:
+    """Called by the admin PUT /cps-factors endpoint after saving new weights."""
+    global _cps_weight_cache
+    _cps_weight_cache = None
 
 def compute_skill_scores(assessment_id: int, db: Session, dataset_version: str = "v1") -> dict:
     """
@@ -164,13 +202,29 @@ def compute_cps_v1(
     education_board: str,
     support_level: str,
     resource_access: str = "unknown",
+    db: Optional[Session] = None,
 ) -> float:
     """
     Compute Context Profile Score (CPS) on a 0–100 scale.
 
-    Deterministic, explainable, versioned.
-    No DB access. No side effects.
+    Deterministic, explainable, versioned, fast.
+
+    Weights are read from cps_factor_config (DB) on first call and cached
+    in-memory for all subsequent calls. Falls back to hardcoded defaults
+    if the table is empty, missing, or throws. Cache is cleared by the
+    admin PUT /cps-factors endpoint via clear_cps_weight_cache().
     """
+    global _cps_weight_cache
+
+    # Populate cache on first call (or after cache clear)
+    if _cps_weight_cache is None:
+        if db is not None:
+            loaded = _load_cps_weights(db)
+            _cps_weight_cache = loaded if loaded else dict(_HARDCODED_CPS_WEIGHTS)
+        else:
+            _cps_weight_cache = dict(_HARDCODED_CPS_WEIGHTS)
+
+    w = _cps_weight_cache
 
     # Normalize inputs (defensive)
     ses_band = (ses_band or "unknown").strip().lower()
@@ -228,12 +282,12 @@ def compute_cps_v1(
     support_score = support_map.get(support_level, support_map["unknown"])
     resource_score = resource_map.get(resource_access, resource_map["unknown"])
 
-    # --- Weighted CPS (still explainable) ---
+    # --- Weighted CPS (weights from cache, fallback to hardcoded) ---
     cps_normalized = (
-        (ses_score * 0.35)
-        + (board_score * 0.25)
-        + (support_score * 0.25)
-        + (resource_score * 0.15)
+        (ses_score    * w.get("ses_band",        _HARDCODED_CPS_WEIGHTS["ses_band"]))
+        + (board_score  * w.get("education_board", _HARDCODED_CPS_WEIGHTS["education_board"]))
+        + (support_score * w.get("support_level",   _HARDCODED_CPS_WEIGHTS["support_level"]))
+        + (resource_score * w.get("resource_access", _HARDCODED_CPS_WEIGHTS["resource_access"]))
     )
 
     return round(cps_normalized * 100, 2)
