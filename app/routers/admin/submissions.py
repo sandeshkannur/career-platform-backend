@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_db
 from app.models import (
     SMEProfile,
+    SMESubmission,
     SMESubmissionToken,
     SMEAQRating,
     SMEKeySkillRating,
@@ -305,7 +306,105 @@ def admin_manual_submit(
 
 
 # ============================================================
-# Public Endpoint 4: Get SME form
+# Endpoint 4: List all SME form submissions
+# Purpose:    Admin views all sme_submissions rows with optional filters
+# Input:      Optional ?status=, ?career_id=, ?sme_email= query params
+# Reads:      sme_submissions table
+# Idempotent: Yes — read-only
+# NOTE: defined here (static /sme/submissions) BEFORE /{sme_id} dynamic routes
+# ============================================================
+
+@router.get(
+    "/sme/submissions",
+    summary="List all SME submissions",
+)
+def list_submissions(
+    status:    Optional[str] = None,
+    career_id: Optional[int] = None,
+    sme_email: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    query = db.query(SMESubmission).order_by(SMESubmission.submitted_at.desc())
+    if status:
+        query = query.filter(SMESubmission.status == status)
+    if career_id:
+        query = query.filter(SMESubmission.career_id == career_id)
+    if sme_email:
+        query = query.filter(SMESubmission.sme_email.ilike(f"%{sme_email}%"))
+    rows = query.all()
+    return [
+        {
+            "id": r.id,
+            "sme_id": r.sme_id,
+            "sme_email": r.sme_email,
+            "career_id": r.career_id,
+            "status": r.status,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+            "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "reviewed_by": r.reviewed_by,
+            "notes": r.notes,
+            "submission_data": r.submission_data,
+        }
+        for r in rows
+    ]
+
+
+# ============================================================
+# Endpoint 5: Update SME submission status
+# Purpose:    Admin reviews a submission and sets status + notes
+# Input:      Path param submission_id + JSON body {status, notes}
+# Writes:     sme_submissions.status, .notes, .reviewed_at, .reviewed_by
+# Idempotent: Yes — repeated calls with same status are safe
+# ============================================================
+
+class SubmissionStatusUpdate(BaseModel):
+    status: str
+    notes:  Optional[str] = None
+
+
+@router.put(
+    "/sme/submissions/{submission_id}/status",
+    summary="Update submission status",
+)
+def update_submission_status(
+    submission_id: int,
+    payload:       SubmissionStatusUpdate,
+    db:            Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    valid_statuses = {"received", "under_review", "approved", "rejected"}
+    if payload.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of {sorted(valid_statuses)}",
+        )
+
+    submission = db.query(SMESubmission).filter(SMESubmission.id == submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404, detail=f"Submission id={submission_id} not found.")
+
+    submission.status      = payload.status
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = current_user.id
+    if payload.notes is not None:
+        submission.notes = payload.notes
+
+    db.commit()
+    db.refresh(submission)
+
+    logger.info("Submission %s status → %s by admin=%s", submission_id, payload.status, current_user.id)
+    return {
+        "id":          submission.id,
+        "status":      submission.status,
+        "reviewed_at": submission.reviewed_at.isoformat() if submission.reviewed_at else None,
+        "reviewed_by": submission.reviewed_by,
+        "notes":       submission.notes,
+    }
+
+
+# ============================================================
+# Public Endpoint 6: Get SME form
 # Purpose:    SME retrieves their form — career info + AQs + key skills to rate
 # Input:      Path param token (UUID)
 # Reads:      sme_submission_tokens, careers, associated_qualities, keyskills
