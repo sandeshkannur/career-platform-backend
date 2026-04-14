@@ -1384,3 +1384,43 @@ class InterestInventoryResponse(Base):
                                onupdate=func.now())
 
     student = relationship('Student', backref='interest_responses')
+
+
+class CareerFeatureVector(Base):
+    """
+    Per-career feature vectors for similarity search and intelligence.
+
+    Computed offline by app/services/career_vector_service.py and cached here.
+    Never written by user-facing endpoints — only by the admin recompute job.
+
+    Columns
+    -------
+    keyskill_vec  : normalised key-skill weight vector (sparse dict of keyskill_id → weight)
+    market_vec    : normalised market signal vector (salary bands, automation_risk, outlook)
+    tfidf_vec     : TF-IDF vector over career title + description text
+    aq_vec        : optional AQ-weight vector from approved SME aggregations
+    student_vec   : optional centroid of student assessment score vectors
+    archetype_id  : cluster label assigned by k-means (None until first recompute)
+    archetype_label: human-readable cluster name (e.g. "STEM-High", "Creative-Mid")
+    centrality_score: how central this career is within its archetype cluster (0–1)
+    computed_at   : timestamp of last recompute run
+    """
+    __tablename__ = "career_feature_vectors"
+
+    career_id       = Column(Integer, ForeignKey("careers.id", ondelete="CASCADE"), primary_key=True)
+    keyskill_vec    = Column(JSON_TYPE, nullable=False)
+    market_vec      = Column(JSON_TYPE, nullable=False)
+    tfidf_vec       = Column(JSON_TYPE, nullable=False)
+    aq_vec          = Column(JSON_TYPE, nullable=True)
+    student_vec     = Column(JSON_TYPE, nullable=True)
+    archetype_id    = Column(Integer, nullable=True, index=True)
+    archetype_label = Column(String(100), nullable=True)
+    centrality_score = Column(Float, nullable=True)
+    computed_at     = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    career = relationship("Career", backref="feature_vector")
