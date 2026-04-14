@@ -844,6 +844,7 @@ def simulate_batch(
                 "persona":        persona,
                 "top_career":     top_career.get("title", ""),
                 "top_cluster":    top_cluster,
+                "fit_band":       top_career.get("fit_band", ""),
                 "assessment_id":  sim_result["assessment_id"],
             })
 
@@ -858,6 +859,7 @@ def simulate_batch(
                 "persona":        persona,
                 "top_career":     None,
                 "top_cluster":    None,
+                "fit_band":       None,
                 "assessment_id":  None,
                 "error":          str(exc),
             })
