@@ -449,6 +449,26 @@ class SimulateBatchRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# GET /simulate/students
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/simulate/students",
+    summary="List student emails for simulator dropdown (admin)",
+    dependencies=[Depends(require_role("admin"))],
+)
+def list_simulator_students(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+):
+    from sqlalchemy import text
+    rows = db.execute(
+        text("SELECT u.email FROM users u WHERE u.role='student' ORDER BY u.email")
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
 # POST /simulate-assessment
 # ---------------------------------------------------------------------------
 
