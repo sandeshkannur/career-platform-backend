@@ -242,6 +242,9 @@ class Career(Base):
     tier_reason         = Column(Text, nullable=True)
     deactivated_at      = Column(DateTime(timezone=True), nullable=True)
     deactivated_by      = Column(String(100), nullable=True)
+    archetype           = Column(String(30), nullable=True)
+    career_level        = Column(String(20), nullable=True)
+    archetype_rationale = Column(Text, nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
