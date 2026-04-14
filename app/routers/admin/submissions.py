@@ -46,6 +46,7 @@ from app.models import (
 )
 from app.models import Career, KeySkill
 from app.auth.auth import require_role, get_current_active_user
+from app.services.sme_aggregation_service import aggregate_career_submissions
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +405,61 @@ def update_submission_status(
 
 
 # ============================================================
-# Public Endpoint 6: Get SME form
+# Endpoint 6: Weighted aggregation of approved submissions
+# Purpose:    Aggregate approved SME form submissions for a career
+# Input:      Path param career_id
+# Reads:      sme_submissions (approved), sme_profiles (credential weights)
+# Writes:     NONE — analysis only, does not touch scoring tables
+# Minimum:    3 approved submissions required (returns 400 if fewer)
+# NOTE:       defined here (static /sme/aggregation/...) BEFORE /{sme_id}
+# ============================================================
+
+class AQAggregationEntry(BaseModel):
+    aq_key:        str
+    weighted_avg:  Optional[float]
+    median:        Optional[float]
+    std_dev:       Optional[float]
+    sme_count:     int
+    outlier_count: int
+
+
+class CareerAggregationResponse(BaseModel):
+    career_id:       int
+    sme_count:       int
+    outlier_count:   int
+    consensus_score: float
+    aq_aggregations: List[AQAggregationEntry]
+
+
+@router.get(
+    "/sme/aggregation/{career_id}",
+    response_model=CareerAggregationResponse,
+    summary="ADM-B02: Weighted aggregation of approved SME submissions for a career",
+)
+def get_career_aggregation(
+    career_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """
+    Aggregate all approved sme_submissions for *career_id*.
+
+    - Requires at least 3 approved submissions (returns 400 otherwise).
+    - Uses sme_profiles.credentials_score as the weight for each SME
+      (defaults to 1.0 for unlinked or unscored SMEs).
+    - Detects outliers per AQ: |rating − median| > 2σ.
+    - Returns weighted average (outliers excluded) for each of aq_01…aq_25.
+    - Analysis-only — no writes to any scoring or results table.
+    """
+    try:
+        result = aggregate_career_submissions(db=db, career_id=career_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result
+
+
+# ============================================================
+# Public Endpoint 7: Get SME form
 # Purpose:    SME retrieves their form — career info + AQs + key skills to rate
 # Input:      Path param token (UUID)
 # Reads:      sme_submission_tokens, careers, associated_qualities, keyskills
