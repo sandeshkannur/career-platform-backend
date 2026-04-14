@@ -252,6 +252,10 @@ class Career(BaseModel):
     pathway_accessible: Optional[str] = None
     pathway_premium: Optional[str] = None
     pathway_earn_learn: Optional[str] = None
+    # Archetype classification (metadata only — does not affect scoring)
+    archetype:           Optional[str] = None
+    career_level:        Optional[str] = None
+    archetype_rationale: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
