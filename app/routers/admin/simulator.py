@@ -59,39 +59,133 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 PERSONA_RANGES: Dict[str, Dict[str, List[int]]] = {
-    "stem_explorer": {
-        "aq_01_05": [4, 5], "aq_06_09": [4, 5], "aq_10_14": [3, 4],
-        "aq_15_18": [3, 4], "aq_19_22": [2, 3], "aq_23_25": [2, 3],
+    # === COGNITIVE-DOMINANT ===
+
+    "analytical_thinker": {
+        # Pure cognition peak. Weak emotional/social.
+        # Expected: Data Scientist, Physicist, Mathematician, Statistician
+        "aq_01_05": [5, 5], "aq_06_09": [5, 5], "aq_10_14": [3, 4],
+        "aq_15_18": [2, 3], "aq_19_22": [1, 2], "aq_23_25": [2, 3],
     },
-    "creative_artist": {
-        "aq_01_05": [2, 3], "aq_06_09": [2, 3], "aq_10_14": [3, 4],
-        "aq_15_18": [3, 4], "aq_19_22": [4, 5], "aq_23_25": [4, 5],
+    "systematic_builder": {
+        # Cognitive + Behavioral peak. Wants to design/build.
+        # Expected: Mechanical Engineer, Architect, Civil Engineer, Manufacturing Engineer
+        "aq_01_05": [4, 5], "aq_06_09": [4, 5], "aq_10_14": [5, 5],
+        "aq_15_18": [4, 5], "aq_19_22": [2, 3], "aq_23_25": [2, 3],
     },
-    "business_leader": {
-        "aq_01_05": [3, 4], "aq_06_09": [3, 4], "aq_10_14": [4, 5],
-        "aq_15_18": [4, 5], "aq_19_22": [3, 4], "aq_23_25": [4, 5],
+    "investigative_researcher": {
+        # Curiosity + Persistence peak. Low social.
+        # Expected: Researcher, Epidemiologist, Environmental Scientist, Forensic Pathologist
+        "aq_01_05": [5, 5], "aq_06_09": [4, 5], "aq_10_14": [3, 4],
+        "aq_15_18": [4, 5], "aq_19_22": [2, 3], "aq_23_25": [1, 2],
     },
-    "healthcare_helper": {
+
+    # === BEHAVIORAL-DOMINANT ===
+
+    "strategic_leader": {
+        # Drive + Communication peak. Moderate everything else.
+        # Expected: CEO, General Manager, Management Consultant, Military Officer
         "aq_01_05": [3, 4], "aq_06_09": [3, 4], "aq_10_14": [3, 4],
+        "aq_15_18": [5, 5], "aq_19_22": [3, 4], "aq_23_25": [5, 5],
+    },
+    "organized_executor": {
+        # Work + Discipline peak. Low creativity.
+        # Expected: Accountant, Auditor, Quality Control Inspector, Logistics Manager
+        "aq_01_05": [2, 3], "aq_06_09": [3, 4], "aq_10_14": [4, 5],
+        "aq_15_18": [5, 5], "aq_19_22": [3, 4], "aq_23_25": [3, 4],
+    },
+    "hands_on_maker": {
+        # Experimentation + Precision peak. Low cognitive/emotional.
+        # Expected: Electrician, Carpenter, Welder, CNC Programmer, Chef
+        "aq_01_05": [2, 3], "aq_06_09": [2, 3], "aq_10_14": [5, 5],
+        "aq_15_18": [4, 5], "aq_19_22": [2, 3], "aq_23_25": [2, 3],
+    },
+
+    # === EMOTIONAL-DOMINANT ===
+
+    "empathetic_healer": {
+        # Emotional + Social peak. Moderate cognitive.
+        # Expected: Psychologist, Counselor, Social Worker, Nurse, Therapist
+        "aq_01_05": [3, 4], "aq_06_09": [2, 3], "aq_10_14": [3, 4],
+        "aq_15_18": [3, 4], "aq_19_22": [5, 5], "aq_23_25": [5, 5],
+    },
+    "creative_visionary": {
+        # Emotional + Idea Generation peak. Low discipline.
+        # Expected: Art Director, Photographer, Graphic Designer, Fashion Designer, Actor
+        "aq_01_05": [3, 4], "aq_06_09": [2, 3], "aq_10_14": [2, 3],
+        "aq_15_18": [2, 3], "aq_19_22": [5, 5], "aq_23_25": [4, 5],
+    },
+    "patient_educator": {
+        # Communication + Emotional + moderate cognitive.
+        # Expected: Teacher, Corporate Trainer, Career Counselor, Dean
+        "aq_01_05": [3, 4], "aq_06_09": [3, 4], "aq_10_14": [3, 4],
+        "aq_15_18": [3, 4], "aq_19_22": [4, 5], "aq_23_25": [5, 5],
+    },
+
+    # === CROSS-DOMAIN ===
+
+    "tech_creative_hybrid": {
+        # Cognitive + Emotional peak. Bridge between tech and art.
+        # Expected: UX/UI Designer, Game Developer, Web Developer, Digital Marketer
+        "aq_01_05": [4, 5], "aq_06_09": [4, 5], "aq_10_14": [3, 4],
+        "aq_15_18": [2, 3], "aq_19_22": [4, 5], "aq_23_25": [3, 4],
+    },
+    "science_people_bridge": {
+        # Cognitive + Emotional + Social. Science meets caring.
+        # Expected: Epidemiologist, Biomedical Engineer, Speech Pathologist, Psychiatrist
+        "aq_01_05": [4, 5], "aq_06_09": [3, 4], "aq_10_14": [3, 4],
         "aq_15_18": [3, 4], "aq_19_22": [4, 5], "aq_23_25": [4, 5],
     },
-    "balanced": {
+    "entrepreneurial_connector": {
+        # Social + Drive peak. Moderate everything else.
+        # Expected: Real Estate Agent, Event Planner, Fundraising Manager, Life Coach
+        "aq_01_05": [3, 4], "aq_06_09": [3, 4], "aq_10_14": [3, 4],
+        "aq_15_18": [4, 5], "aq_19_22": [3, 4], "aq_23_25": [5, 5],
+    },
+
+    # === CONTROL PERSONAS ===
+
+    "balanced_allrounder": {
+        # Flat moderate. Tests multi-domain and gateway careers.
+        # Expected: General Manager, Hotel Manager, Police Officer + entry-level
         "aq_01_05": [3, 4], "aq_06_09": [3, 4], "aq_10_14": [3, 4],
         "aq_15_18": [3, 4], "aq_19_22": [3, 4], "aq_23_25": [3, 4],
     },
-    "random": {
+    "explorer_undecided": {
+        # Wide inconsistent range. Tests gateway careers.
+        # Expected: Entry-level across multiple clusters
+        "aq_01_05": [2, 4], "aq_06_09": [2, 4], "aq_10_14": [2, 4],
+        "aq_15_18": [2, 4], "aq_19_22": [2, 4], "aq_23_25": [2, 4],
+    },
+    "random_stress_test": {
+        # Full range. Edge case testing.
         "aq_01_05": [1, 5], "aq_06_09": [1, 5], "aq_10_14": [1, 5],
         "aq_15_18": [1, 5], "aq_19_22": [1, 5], "aq_23_25": [1, 5],
     },
-    "low_confidence": {
+    "low_engagement": {
+        # Floor test. Student not trying.
         "aq_01_05": [1, 2], "aq_06_09": [1, 2], "aq_10_14": [1, 2],
         "aq_15_18": [1, 2], "aq_19_22": [1, 2], "aq_23_25": [1, 2],
     },
 }
 
+# Backward-compatibility aliases — old 7-persona names map to new equivalents
+PERSONA_ALIASES: Dict[str, str] = {
+    "stem_explorer":     "analytical_thinker",
+    "creative_artist":   "creative_visionary",
+    "business_leader":   "strategic_leader",
+    "healthcare_helper": "empathetic_healer",
+    "balanced":          "balanced_allrounder",
+    "random":            "random_stress_test",
+    "low_confidence":    "low_engagement",
+}
+
 MIXED_CYCLE = [
-    "stem_explorer", "creative_artist", "business_leader",
-    "healthcare_helper", "balanced", "random", "low_confidence",
+    "analytical_thinker", "systematic_builder", "investigative_researcher",
+    "strategic_leader", "organized_executor", "hands_on_maker",
+    "empathetic_healer", "creative_visionary", "patient_educator",
+    "tech_creative_hybrid", "science_people_bridge", "entrepreneurial_connector",
+    "balanced_allrounder", "explorer_undecided", "random_stress_test", "low_engagement",
 ]
 
 VALID_PERSONAS = set(PERSONA_RANGES.keys())
@@ -419,9 +513,13 @@ class SimulateAssessmentRequest(BaseModel):
     @model_validator(mode="after")
     def validate_sim_request(self) -> "SimulateAssessmentRequest":
         if self.mode == "preset":
+            # Resolve alias before validation so old names keep working
+            if self.persona in PERSONA_ALIASES:
+                self.persona = PERSONA_ALIASES[self.persona]
             if self.persona not in VALID_PERSONAS:
                 raise ValueError(
-                    f"Unknown persona '{self.persona}'. Valid: {sorted(VALID_PERSONAS)}"
+                    f"Unknown persona '{self.persona}'. "
+                    f"Valid: {sorted(VALID_PERSONAS)}"
                 )
         if self.mode == "custom" and self.custom_aq_ranges is None:
             raise ValueError("custom_aq_ranges is required when mode='custom'")
@@ -441,10 +539,15 @@ class SimulateBatchRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_batch_request(self) -> "SimulateBatchRequest":
-        if self.persona != "mixed" and self.persona not in VALID_PERSONAS:
-            raise ValueError(
-                f"Unknown persona '{self.persona}'. Valid: {sorted(VALID_PERSONAS)} or 'mixed'"
-            )
+        if self.persona != "mixed":
+            # Resolve alias before validation so old names keep working
+            if self.persona in PERSONA_ALIASES:
+                self.persona = PERSONA_ALIASES[self.persona]
+            if self.persona not in VALID_PERSONAS:
+                raise ValueError(
+                    f"Unknown persona '{self.persona}'. "
+                    f"Valid: {sorted(VALID_PERSONAS)} or 'mixed'"
+                )
         return self
 
 
