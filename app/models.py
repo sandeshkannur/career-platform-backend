@@ -435,7 +435,7 @@ class Question(Base):
 
     question_text_en = Column(String, nullable=False)
     question_text_hi = Column(String)
-    question_text_ta = Column(String)
+    question_text_kn = Column(String)
 
     skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
 
