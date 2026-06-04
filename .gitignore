@@ -35,3 +35,6 @@ export_v1_seedpack.py
 make_qft_upload_ready.py
 *.csv
 data/
+
+# Claude Code configuration
+.claude/
