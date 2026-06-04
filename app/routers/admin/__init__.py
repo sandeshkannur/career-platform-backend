@@ -16,7 +16,7 @@ Sub-modules:
 from fastapi import APIRouter, Depends
 from app.auth.auth import require_role
 
-from app.routers.admin import ingest, questions, users, validation, sme, submissions, aqs, careers_bulk, fit_bands, compliance
+from app.routers.admin import ingest, questions, users, validation, sme, submissions, aqs, careers_bulk, fit_bands, compliance, cps_config, engine_health, audit_trail, careers_wizard, career_intelligence, simulator
 
 # Top-level router — all sub-routers inherit the admin role gate
 router = APIRouter(
@@ -28,9 +28,15 @@ router.include_router(ingest.router)
 router.include_router(questions.router)
 router.include_router(users.router)
 router.include_router(validation.router)
-router.include_router(sme.router)
-router.include_router(submissions.router)
+router.include_router(submissions.router)  # static /sme/tokens, /sme/submit, /sme/aggregate before /{sme_id}
+router.include_router(sme.router)          # dynamic /sme/{sme_id} must come after all static /sme/... routes
 router.include_router(aqs.router)
 router.include_router(careers_bulk.router)
 router.include_router(fit_bands.router)
 router.include_router(compliance.router)
+router.include_router(cps_config.router)
+router.include_router(engine_health.router)
+router.include_router(audit_trail.router)
+router.include_router(careers_wizard.router)
+router.include_router(career_intelligence.router)
+router.include_router(simulator.router)  # static /simulate-* routes — no dynamic params

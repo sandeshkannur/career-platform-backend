@@ -242,6 +242,9 @@ class Career(Base):
     tier_reason         = Column(Text, nullable=True)
     deactivated_at      = Column(DateTime(timezone=True), nullable=True)
     deactivated_by      = Column(String(100), nullable=True)
+    archetype           = Column(String(30), nullable=True)
+    career_level        = Column(String(20), nullable=True)
+    archetype_rationale = Column(Text, nullable=True)
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
@@ -432,7 +435,7 @@ class Question(Base):
 
     question_text_en = Column(String, nullable=False)
     question_text_hi = Column(String)
-    question_text_ta = Column(String)
+    question_text_kn = Column(String)
 
     skill_id = Column(Integer, ForeignKey("skills.id"), nullable=False)
 
@@ -800,6 +803,164 @@ class QuestionStudentSkillWeight(Base):
     skill = relationship("Skill", backref="question_weights")
 
 # =========================================================
+# Admin Audit Trail — append-only log of admin actions
+# =========================================================
+
+class AdminAuditTrail(Base):
+    """
+    Immutable audit log of admin actions across all admin endpoints.
+
+    Design rules:
+    - APPEND-ONLY: application code must never UPDATE or DELETE rows.
+    - user_id / user_email are stamped at write time (denormalised for
+      durability — the record remains readable even if the user is deleted).
+    - details (JSON) stores old/new values or any context relevant to
+      the action; schema is free-form per action type.
+    """
+    __tablename__ = "admin_audit_trail"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    action      = Column(String(64),  nullable=False, index=True)   # create/update/delete/approve/reject/promote/rollback
+    entity_type = Column(String(64),  nullable=False, index=True)   # career/cluster/keyskill/sme_profile/…
+    entity_id   = Column(Integer,     nullable=True)
+    entity_name = Column(String(255), nullable=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_email  = Column(String(320), nullable=False)
+    details     = Column(JSON_TYPE,   nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+# =========================================================
+# CPS Factor Config — admin-adjustable weights for compute_cps_v1
+# =========================================================
+
+class CPSFactorConfig(Base):
+    """
+    Admin-configurable weights for the four Context Profile Score factors.
+
+    factor_key must be one of:
+      ses_band, education_board, support_level, resource_access
+
+    Weights across all 4 rows must sum to 1.0.
+    compute_cps_v1 reads from this table (cached) and falls back to
+    hardcoded defaults if the table is empty or unreadable.
+    """
+    __tablename__ = "cps_factor_config"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    factor_key = Column(String(64), unique=True, nullable=False, index=True)
+    label      = Column(String(200), nullable=False)
+    weight     = Column(Float, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("factor_key", name="uq_cps_factor_config_factor_key"),
+    )
+
+
+# =========================================================
+# ADM-B01 / ADM-B02: SME Profile + Submission Pipeline
+# =========================================================
+
+class SMEProfile(Base):
+    """
+    Subject Matter Expert profile — one row per SME.
+
+    Weighting approach (Approach B — credentials × calibration composite):
+      credentials_score = (years_experience × 0.4) + (seniority_score × 0.3)
+                        + (education_score × 0.2)  + (sector_relevance × 0.1)
+      calibration_score = 1 - mean_absolute_deviation_from_group_median
+      effective_weight  = credentials_score × calibration_score  (never stored)
+
+    Deactivation rule: NEVER DELETE rows — set status = 'inactive'.
+    """
+    __tablename__ = "sme_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Identity
+    full_name    = Column(String(200), nullable=False, default="")
+    email        = Column(String(320), unique=True, nullable=False, index=True)
+    phone        = Column(String(50),  nullable=True)
+    organization = Column(String(200), nullable=True)
+    designation  = Column(String(200), nullable=True)
+
+    # Domain / expertise
+    expertise_domain = Column(String(100), nullable=True, index=True)
+
+    # Career assignments (comma-separated IDs, max_careers cap)
+    career_assignments = Column(Text, nullable=True)
+    max_careers        = Column(Integer, nullable=False, default=3)
+
+    # Admin notes
+    notes = Column(Text, nullable=True)
+
+    # Credential inputs (normalised 0.0–1.0)
+    years_experience  = Column(Integer, nullable=True)
+    seniority_score   = Column(Float,   nullable=True)
+    education_score   = Column(Float,   nullable=True)
+    sector_relevance  = Column(Float,   nullable=True)
+
+    # Computed credential score (recomputed on change)
+    credentials_score = Column(Float, nullable=True)
+
+    # Calibration score (set by aggregation service, ADM-B03)
+    calibration_score = Column(Float, nullable=True)
+
+    # Submission tracking
+    submission_count = Column(Integer, nullable=False, default=0)
+
+    # Context fields
+    sector    = Column(String(200), nullable=True)
+    education = Column(String(200), nullable=True)
+
+    # Lifecycle — use 'inactive' for deactivation, never delete
+    status    = Column(String(20), nullable=False, default="active", index=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Audit timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_sme_profiles_email"),
+        Index("ix_sme_profiles_status", "status"),
+    )
+
+    submissions = relationship("SMESubmission", back_populates="sme_profile")
+
+
+class SMESubmission(Base):
+    """
+    SMESubmission — form responses submitted by SMEs for a specific career.
+
+    Key design notes:
+    - idempotency_key (unique) prevents duplicate submissions at DB level.
+    - sme_id is nullable: anonymous/unregistered SMEs submit without a profile row.
+    - If sme_email matches an existing sme_profiles row, sme_id is set automatically.
+    """
+    __tablename__ = "sme_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sme_id = Column(Integer, ForeignKey("sme_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
+    sme_email = Column(String(320), nullable=False, index=True)
+    career_id = Column(Integer, ForeignKey("careers.id", ondelete="RESTRICT"), nullable=False, index=True)
+    submission_data = Column(JSON_TYPE, nullable=False)
+    idempotency_key = Column(String(255), unique=True, nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="received", index=True)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    sme_profile = relationship("SMEProfile", back_populates="submissions")
+    career = relationship("Career", backref="sme_submissions")
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# =========================================================
 # PR16: CMS-backed explainability content (versioned + locale-aware)
 # =========================================================
 
@@ -828,116 +989,6 @@ class ExplainabilityContent(Base):
 
     __table_args__ = (
         UniqueConstraint("version", "locale", "explanation_key", name="uq_explainability_content_v_l_k"),
-    )
-
-
-# =========================================================
-# ADM-B01: SME (Subject Matter Expert) Profile
-# Part of the A01 SME Validation & Expert Management section.
-#
-# Weighting approach: Approach B — credentials × calibration composite.
-#
-#   credentials_score = (years_experience × 0.4)
-#                     + (seniority_score   × 0.3)
-#                     + (education_score   × 0.2)
-#                     + (sector_relevance  × 0.1)
-#
-#   calibration_score = 1 - mean_absolute_deviation_from_group_median
-#                     (computed by aggregation service, stored here for audit)
-#
-#   effective_weight  = credentials_score × calibration_score
-#                     (never stored — always recomputed by ADM-B03 service)
-#
-# Deactivation rule: NEVER DELETE rows — set status = 'inactive'.
-# This preserves the full audit trail of who validated which careers.
-# =========================================================
-
-class SMEProfile(Base):
-    """
-    Subject Matter Expert profile — one row per SME.
-
-    Stores identity, career assignments, experience-based credential
-    inputs, and the calibration score computed after each submission
-    round by the weighted aggregation service (ADM-B03).
-
-    The effective_weight used in final career-AQ aggregation is:
-        effective_weight = credentials_score * calibration_score
-    This is never persisted here — it is computed fresh each time
-    so it always reflects the most recent calibration round.
-    """
-    __tablename__ = "sme_profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-
-    # ── Identity ──────────────────────────────────────────────────
-    full_name    = Column(String(200), nullable=False)
-    email        = Column(String(200), unique=True, nullable=False, index=True)
-    phone        = Column(String(50),  nullable=True)
-    organization = Column(String(200), nullable=True)
-    designation  = Column(String(200), nullable=True)
-
-    # ── Domain / expertise ────────────────────────────────────────
-    expertise_domain = Column(String(100), nullable=True, index=True)  # e.g. "STEM", "Business"
-
-    # ── Career assignments ────────────────────────────────────────
-    # Comma-separated career IDs (legacy format; JSON list semantics).
-    # Hard cap: max_careers per SME (default 3) to protect IP.
-    career_assignments = Column(Text, nullable=True)
-    max_careers        = Column(Integer, nullable=False, default=3)
-
-    # ── Admin notes ───────────────────────────────────────────────
-    notes = Column(Text, nullable=True)
-
-    # ── Credential inputs (used to compute credentials_score) ─────
-    # All scores are normalised 0.0 – 1.0 before storage.
-    # Raw values (e.g. actual years) are in context_notes if needed.
-    years_experience  = Column(Integer, nullable=True)   # raw years (e.g. 12)
-    seniority_score   = Column(Float,   nullable=True)   # 0.0 – 1.0
-    education_score   = Column(Float,   nullable=True)   # 0.0 – 1.0
-    sector_relevance  = Column(Float,   nullable=True)   # 0.0 – 1.0
-
-    # ── Computed credential score ─────────────────────────────────
-    # credentials_score = (years×0.4) + (seniority×0.3)
-    #                   + (education×0.2) + (sector×0.1)
-    # Recomputed and stored whenever credential inputs change.
-    credentials_score = Column(Float, nullable=True)
-
-    # ── Calibration score (set by aggregation service, ADM-B03) ───
-    # calibration_score = 1 - mean_absolute_deviation_from_group_median
-    # Null until the SME has at least one completed submission round.
-    # Range: 0.0 (complete outlier) to 1.0 (perfect consensus alignment)
-    calibration_score = Column(Float, nullable=True)
-
-    # ── Submission tracking ───────────────────────────────────────
-    # Total career forms completed by this SME across all rounds.
-    # Used to give higher implicit trust to experienced SME respondents.
-    submission_count = Column(Integer, nullable=False, default=0)
-
-    # ── Context fields ────────────────────────────────────────────
-    sector    = Column(String(200), nullable=True)  # e.g. "Healthcare", "IT"
-    education = Column(String(200), nullable=True)  # e.g. "PhD Psychology"
-
-    # ── Lifecycle ─────────────────────────────────────────────────
-    # status: 'active' | 'inactive'
-    # Use 'inactive' for deactivation — NEVER DELETE rows.
-    status = Column(String(20), nullable=False, default="active", index=True)
-
-    # ── Audit timestamps ──────────────────────────────────────────
-    created_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-    __table_args__ = (
-        UniqueConstraint("email", name="uq_sme_profiles_email"),
-        Index("ix_sme_profiles_status", "status"),
     )
 
 
@@ -1336,3 +1387,43 @@ class InterestInventoryResponse(Base):
                                onupdate=func.now())
 
     student = relationship('Student', backref='interest_responses')
+
+
+class CareerFeatureVector(Base):
+    """
+    Per-career feature vectors for similarity search and intelligence.
+
+    Computed offline by app/services/career_vector_service.py and cached here.
+    Never written by user-facing endpoints — only by the admin recompute job.
+
+    Columns
+    -------
+    keyskill_vec  : normalised key-skill weight vector (sparse dict of keyskill_id → weight)
+    market_vec    : normalised market signal vector (salary bands, automation_risk, outlook)
+    tfidf_vec     : TF-IDF vector over career title + description text
+    aq_vec        : optional AQ-weight vector from approved SME aggregations
+    student_vec   : optional centroid of student assessment score vectors
+    archetype_id  : cluster label assigned by k-means (None until first recompute)
+    archetype_label: human-readable cluster name (e.g. "STEM-High", "Creative-Mid")
+    centrality_score: how central this career is within its archetype cluster (0–1)
+    computed_at   : timestamp of last recompute run
+    """
+    __tablename__ = "career_feature_vectors"
+
+    career_id       = Column(Integer, ForeignKey("careers.id", ondelete="CASCADE"), primary_key=True)
+    keyskill_vec    = Column(JSON_TYPE, nullable=False)
+    market_vec      = Column(JSON_TYPE, nullable=False)
+    tfidf_vec       = Column(JSON_TYPE, nullable=False)
+    aq_vec          = Column(JSON_TYPE, nullable=True)
+    student_vec     = Column(JSON_TYPE, nullable=True)
+    archetype_id    = Column(Integer, nullable=True, index=True)
+    archetype_label = Column(String(100), nullable=True)
+    centrality_score = Column(Float, nullable=True)
+    computed_at     = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    career = relationship("Career", backref="feature_vector")
