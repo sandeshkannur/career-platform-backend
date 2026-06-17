@@ -56,3 +56,7 @@ try:
     from app.schemas_assessment_questions import *  # noqa: F401,F403
 except Exception:
     pass
+try:
+    from .weight_approval import *  # noqa: F401,F403
+except Exception:
+    pass

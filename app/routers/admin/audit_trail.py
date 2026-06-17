@@ -45,6 +45,7 @@ VALID_ENTITY_TYPES = {
     "career", "cluster", "keyskill",
     "sme_profile", "sme_submission",
     "fit_band", "cps_factor", "aq",
+    "weight_change_request",
 }
 
 
