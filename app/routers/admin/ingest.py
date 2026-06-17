@@ -680,10 +680,20 @@ async def upload_career_keyskill_weights(
         )
 
     # ---------------------------
-    # PASS 5: Upsert (idempotent)
+    # PASS 5: Upsert (idempotent) — dry_run uses a savepoint so the same SQL
+    # path executes (surfacing constraint / type errors) but is always rolled back.
     # ---------------------------
     inserted = 0
     updated = 0
+
+    _upsert_sql = text(
+        """
+        INSERT INTO career_keyskill_association (career_id, keyskill_id, weight_percentage)
+        VALUES (:career_id, :keyskill_id, :weight_percentage)
+        ON CONFLICT (career_id, keyskill_id)
+        DO UPDATE SET weight_percentage = EXCLUDED.weight_percentage
+        """
+    )
 
     for r in rows:
         # check existence for accurate inserted vs updated counts
@@ -700,23 +710,18 @@ async def upload_career_keyskill_weights(
         ).first()
 
         if dry_run:
-            if exists:
-                updated += 1
-            else:
-                inserted += 1
-            continue
-
-        db.execute(
-            text(
-                """
-                INSERT INTO career_keyskill_association (career_id, keyskill_id, weight_percentage)
-                VALUES (:career_id, :keyskill_id, :weight_percentage)
-                ON CONFLICT (career_id, keyskill_id)
-                DO UPDATE SET weight_percentage = EXCLUDED.weight_percentage
-                """
-            ),
-            r,
-        )
+            # Run the real INSERT inside a savepoint that is always rolled back.
+            # Any SQL error (missing constraint, type mismatch, etc.) surfaces here
+            # exactly as it would at commit time — giving true dry-run fidelity.
+            sp = db.begin_nested()
+            try:
+                db.execute(_upsert_sql, r)
+            except Exception:
+                sp.rollback()
+                raise
+            sp.rollback()
+        else:
+            db.execute(_upsert_sql, r)
 
         if exists:
             updated += 1

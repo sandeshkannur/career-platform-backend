@@ -216,6 +216,9 @@ career_keyskill_association = Table(
     Column("keyskill_id", Integer, ForeignKey("keyskills.id"), primary_key=True),
     # weight percentage (0–100) coming from your rationale docs
     Column("weight_percentage", Integer, nullable=False, default=0),
+    # Mirrors the DB constraint added in migration c9e1a2f3b456.
+    # Required so ON CONFLICT (career_id, keyskill_id) has a named target.
+    UniqueConstraint("career_id", "keyskill_id", name="uq_career_keyskill"),
 )
 
 
