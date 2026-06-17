@@ -110,10 +110,10 @@ PERSONA_RANGES: Dict[str, Dict[str, List[int]]] = {
         "aq_15_18": [3, 4], "aq_19_22": [5, 5], "aq_23_25": [5, 5],
     },
     "creative_visionary": {
-        # Emotional + Idea Generation peak. Low discipline.
+        # Cognitive creativity peak (AQ01,08,09 feed Creative Expression). Moderate emotional.
         # Expected: Art Director, Photographer, Graphic Designer, Fashion Designer, Actor
-        "aq_01_05": [3, 4], "aq_06_09": [2, 3], "aq_10_14": [2, 3],
-        "aq_15_18": [2, 3], "aq_19_22": [5, 5], "aq_23_25": [4, 5],
+        "aq_01_05": [5, 5], "aq_06_09": [4, 5], "aq_10_14": [2, 3],
+        "aq_15_18": [2, 3], "aq_19_22": [4, 5], "aq_23_25": [3, 4],
     },
     "patient_educator": {
         # Communication + Emotional + moderate cognitive.
