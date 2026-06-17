@@ -248,6 +248,10 @@ class Career(Base):
     archetype           = Column(String(30), nullable=True)
     career_level        = Column(String(20), nullable=True)
     archetype_rationale = Column(Text, nullable=True)
+    # Governance hook for the weight-approval spine (Stage 1).
+    # 'gated' = changes must go through WeightChangeRequest approval flow.
+    # 'open'  = reserved for future lighter-touch editing cadence.
+    weight_change_policy = Column(String(10), nullable=False, default='gated')
 
     cluster = relationship("CareerCluster", back_populates="careers")
     keyskills = relationship(
@@ -1430,3 +1434,85 @@ class CareerFeatureVector(Base):
     )
 
     career = relationship("Career", backref="feature_vector")
+
+
+# =========================================================
+# Weight Approval Spine — change-request governance
+# =========================================================
+
+class WeightChangeRequest(Base):
+    """
+    Envelope for a proposed change to one or more careers' key-skill weights.
+
+    State machine (enforced in the service layer; no DB triggers):
+
+        draft  ──►  pending_review  ──►  approved  ──►  promoted
+          │                │
+          └────────────────┴──►  rejected
+
+    Allowed transitions:
+        draft           → pending_review  (author submits for review)
+        draft           → rejected        (author discards)
+        pending_review  → approved        (reviewer accepts)
+        pending_review  → rejected        (reviewer declines or author withdraws)
+        approved        → promoted        (system writes weights to live table)
+
+    `changes` JSONB schema (array, one element per career):
+        [
+          {
+            "career_id": <int>,
+            "baseline_weights": [
+              {"keyskill_id": <int>, "weight_percentage": <int>},
+              ...
+            ],
+            "proposed_weights": [
+              {"keyskill_id": <int>, "weight_percentage": <int>},
+              ...
+            ]
+          },
+          ...
+        ]
+    `baseline_weights` is a snapshot of live career_keyskill_association rows
+    captured at proposal time.  Proposed weights must sum to 100 per career
+    (validated in the service layer on submit, not at INSERT time).
+
+    `scope`:
+        single — one career's weights (most common)
+        batch  — multiple careers in one request (cluster recalibration etc.)
+
+    `review_level` is always 1 for now; field reserved for L2 escalation later.
+
+    `vectors_recomputed` is set True after promotion triggers a recompute of
+    career_feature_vectors.  False = post-promotion recompute still pending.
+    """
+    __tablename__ = "weight_change_requests"
+
+    id     = Column(Integer, primary_key=True, index=True)
+    title  = Column(String(200), nullable=True)
+    status = Column(String(20),  nullable=False, default='draft', index=True)
+    scope  = Column(String(10),  nullable=False, default='single')
+
+    # Full before/after snapshot — JSONB on PostgreSQL, JSON elsewhere
+    changes = Column(JSON_TYPE, nullable=False)
+
+    # Authorship
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Review
+    submitted_at     = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by      = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at      = Column(DateTime(timezone=True), nullable=True)
+    review_level     = Column(Integer, nullable=False, default=1)
+    decision_comment = Column(Text, nullable=True)
+
+    # Promotion
+    promoted_at        = Column(DateTime(timezone=True), nullable=True)
+    vectors_recomputed = Column(Boolean, nullable=False, default=False)
+
+    # Two FKs to the same table require explicit foreign_keys to avoid
+    # SQLAlchemy ambiguity error on relationship resolution.
+    creator  = relationship("User", foreign_keys=[created_by])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
