@@ -3,8 +3,9 @@
 # All routes require admin or counsellor role
 # READ-HEAVY — minimal writes (update tier/active status only)
 
+import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,6 +14,16 @@ from sqlalchemy import text
 
 from app.deps import get_db
 from app.auth.auth import require_admin_or_counsellor
+
+# ── Weight-approval spine (Stage 2) ──────────────────────────────────────────
+from app.models import WeightChangeRequest
+from app.routers.admin.audit_trail import log_audit
+from app.schemas.weight_approval import WCRListOut, WCROut, WCRProposalCreate
+from app.services.weight_approval import (
+    snapshot_current_weights,
+    validate_career_exists,
+    validate_proposed_weights,
+)
 
 router = APIRouter()
 
@@ -854,3 +865,239 @@ def get_skill_careers(
         ],
         "total": len(rows),
     }
+
+
+# ---------------------------------------------------------------------------
+# Weight-approval spine — Stage 2
+# Endpoints write ONLY to weight_change_requests.
+# career_keyskill_association is read once (baseline snapshot) and never written.
+# ---------------------------------------------------------------------------
+
+def _wcr_to_dict(wcr: WeightChangeRequest) -> dict:
+    """Serialise a WeightChangeRequest ORM row to a plain dict for JSON responses."""
+    return {
+        "id":                 wcr.id,
+        "title":              wcr.title,
+        "status":             wcr.status,
+        "scope":              wcr.scope,
+        "changes":            wcr.changes,
+        "created_by":         wcr.created_by,
+        "created_at":         wcr.created_at.isoformat() if wcr.created_at else None,
+        "submitted_at":       wcr.submitted_at.isoformat() if wcr.submitted_at else None,
+        "reviewed_by":        wcr.reviewed_by,
+        "reviewed_at":        wcr.reviewed_at.isoformat() if wcr.reviewed_at else None,
+        "review_level":       wcr.review_level,
+        "decision_comment":   wcr.decision_comment,
+        "promoted_at":        wcr.promoted_at.isoformat() if wcr.promoted_at else None,
+        "vectors_recomputed": wcr.vectors_recomputed,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W1 — Create draft weight-change proposal for one career
+# POST /v1/admin-portal/careers/{career_id}/keyskill-weights/proposals
+#
+# Route ordering — no collision with existing routes:
+#   GET /careers/{career_id}         matches a SINGLE path segment after /careers/
+#   PATCH /careers/{career_id}/tier  sub-path already in use with no issues
+#   This route adds a new sub-path /keyskill-weights/proposals under the same
+#   career path prefix.  Different HTTP method (POST) and longer path ensure
+#   FastAPI never confuses it with the GET /careers/{career_id} handler.
+# ---------------------------------------------------------------------------
+
+@router.post("/careers/{career_id}/keyskill-weights/proposals")
+def create_weight_proposal(
+    career_id: int,
+    body: WCRProposalCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    # 1. Verify career exists
+    career = validate_career_exists(career_id, db)
+    if not career:
+        raise HTTPException(status_code=404, detail=f"Career {career_id} not found")
+
+    # 2. Convert Pydantic items to plain dicts for the service layer
+    proposed = [
+        {"keyskill_id": w.keyskill_id, "weight_percentage": w.weight_percentage}
+        for w in body.proposed_weights
+    ]
+
+    # 3. Validate proposed weights (sum=100, min keyskills, concentration cap, FK check)
+    errors = validate_proposed_weights(proposed, db)
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "errors": errors},
+        )
+
+    # 4. Snapshot current live weights as baseline (READ-ONLY on career_keyskill_association)
+    baseline = snapshot_current_weights(career_id, db)
+
+    # 5. Build the changes JSONB array (one entry per career for single-scope proposals)
+    changes = [
+        {
+            "career_id":        career_id,
+            "baseline_weights": baseline,
+            "proposed_weights": proposed,
+        }
+    ]
+
+    # 6. Persist the draft WeightChangeRequest
+    wcr = WeightChangeRequest(
+        title=body.title,
+        status="draft",
+        scope="single",
+        changes=changes,
+        created_by=current_user.id,
+    )
+    db.add(wcr)
+    db.flush()  # populate wcr.id before the audit log references it
+
+    # 7. Audit log — fires inside the same transaction; committed below
+    log_audit(
+        db,
+        action="create",
+        entity_type="weight_change_request",
+        entity_id=wcr.id,
+        entity_name=body.title or f"Career {career_id} weight proposal",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={
+            "career_id":    career_id,
+            "career_title": career["title"],
+            "scope":        "single",
+        },
+    )
+
+    db.commit()
+    db.refresh(wcr)
+
+    return _wcr_to_dict(wcr)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W2 — List weight-change proposals for one career
+# GET /v1/admin-portal/careers/{career_id}/keyskill-weights/proposals
+# ---------------------------------------------------------------------------
+
+@router.get("/careers/{career_id}/keyskill-weights/proposals")
+def list_career_weight_proposals(
+    career_id: int,
+    status: Optional[str] = Query(None, description="Filter by status"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    career = validate_career_exists(career_id, db)
+    if not career:
+        raise HTTPException(status_code=404, detail=f"Career {career_id} not found")
+
+    # JSONB containment filter: changes must include an object with this career_id.
+    # Equivalent to: WHERE changes @> '[{"career_id": <id>}]'
+    filter_json = json.dumps([{"career_id": career_id}])
+
+    params: dict = {"filter": filter_json}
+    status_clause = ""
+    if status:
+        status_clause = "AND status = :status"
+        params["status"] = status
+
+    rows = db.execute(
+        text(f"""
+            SELECT id, title, status, scope, changes,
+                   created_by, created_at, submitted_at,
+                   reviewed_by, reviewed_at, review_level,
+                   decision_comment, promoted_at, vectors_recomputed
+            FROM weight_change_requests
+            WHERE changes @> CAST(:filter AS jsonb)
+            {status_clause}
+            ORDER BY created_at DESC
+        """),
+        params,
+    ).mappings().all()
+
+    items = [dict(r) for r in rows]
+    # Serialise datetimes to ISO strings to match _wcr_to_dict style
+    for item in items:
+        for ts_field in ("created_at", "submitted_at", "reviewed_at", "promoted_at"):
+            v = item.get(ts_field)
+            if v is not None and hasattr(v, "isoformat"):
+                item[ts_field] = v.isoformat()
+
+    return {"items": items, "total": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W3 — Get a single weight-change request by ID
+# GET /v1/admin-portal/weight-change-requests/{request_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/weight-change-requests/{request_id}")
+def get_weight_change_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    wcr = db.query(WeightChangeRequest).filter(
+        WeightChangeRequest.id == request_id
+    ).first()
+    if not wcr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weight change request {request_id} not found",
+        )
+    return _wcr_to_dict(wcr)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W4 — Submit a draft proposal for review (draft → pending_review)
+# POST /v1/admin-portal/weight-change-requests/{request_id}/submit
+# ---------------------------------------------------------------------------
+
+@router.post("/weight-change-requests/{request_id}/submit")
+def submit_weight_change_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    wcr = db.query(WeightChangeRequest).filter(
+        WeightChangeRequest.id == request_id
+    ).first()
+    if not wcr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weight change request {request_id} not found",
+        )
+
+    # Enforce state machine: only draft → pending_review is allowed here
+    if wcr.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "ok": False,
+                "error_code": "INVALID_STATUS_TRANSITION",
+                "message": (
+                    f"Cannot submit a request with status '{wcr.status}'. "
+                    "Only 'draft' requests may be submitted."
+                ),
+            },
+        )
+
+    wcr.status = "pending_review"
+    wcr.submitted_at = datetime.now(timezone.utc)
+
+    log_audit(
+        db,
+        action="update",
+        entity_type="weight_change_request",
+        entity_id=wcr.id,
+        entity_name=wcr.title or f"Request {wcr.id}",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={"previous_status": "draft", "new_status": "pending_review"},
+    )
+
+    db.commit()
+    db.refresh(wcr)
+
+    return _wcr_to_dict(wcr)
