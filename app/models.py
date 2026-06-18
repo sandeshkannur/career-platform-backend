@@ -1516,3 +1516,66 @@ class WeightChangeRequest(Base):
     # SQLAlchemy ambiguity error on relationship resolution.
     creator  = relationship("User", foreign_keys=[created_by])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# Weight Snapshot — restore-point Stage 1
+# =========================================================
+
+class WeightSnapshot(Base):
+    """
+    Named checkpoint of career_keyskill_association state.
+
+    Captured either manually (POST /weight-snapshots) or automatically
+    by the W8 promote endpoint immediately after weights are committed.
+
+    scope_type values:
+        'full'   — entire career_keyskill_association table
+        'career' — single career (scope_ref = career_id)
+
+    source values:
+        'manual'       — triggered explicitly by an admin/counsellor
+        'auto_promote' — auto-captured by the promote hook; wcr_id is set
+        'pre_restore'  — RESERVED for Stage 3 (capture before a restore is
+                         applied); never written in Stage 1
+
+    snapshot JSONB schema:
+        [
+          {
+            "career_id":        <int>,
+            "keyskill_id":      <int>,
+            "weight_percentage": <int>
+          },
+          ...
+        ]
+    Flat/denormalised so a full restore is a single JSONB read with no joins.
+
+    name is system-generated (collision-safe timestamp slug); alias is the
+    optional human-readable label.
+    """
+    __tablename__ = "weight_snapshots"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(100), nullable=False, unique=True, index=True)
+    alias      = Column(String(200), nullable=True)
+    reason     = Column(Text, nullable=True)
+
+    # 'full' | 'career'
+    scope_type = Column(String(20), nullable=False)
+    # career_id when scope_type='career', NULL when scope_type='full'
+    scope_ref  = Column(Integer, ForeignKey("careers.id"), nullable=True, index=True)
+
+    # [{career_id, keyskill_id, weight_percentage}, ...]
+    snapshot   = Column(JSON_TYPE, nullable=False)
+
+    # 'manual' | 'auto_promote' | 'pre_restore'
+    source     = Column(String(20), nullable=False)
+
+    # NULL for manual; set for auto_promote captures
+    wcr_id     = Column(Integer, ForeignKey("weight_change_requests.id"), nullable=True, index=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    creator = relationship("User", foreign_keys=[created_by])
