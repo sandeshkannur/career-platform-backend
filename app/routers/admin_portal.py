@@ -4,6 +4,7 @@
 # READ-HEAVY — minimal writes (update tier/active status only)
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -15,10 +16,11 @@ from sqlalchemy import text
 from app.deps import get_db
 from app.auth.auth import require_admin_or_counsellor
 
-# ── Weight-approval spine (Stage 2) ──────────────────────────────────────────
+# ── Weight-approval spine (Stage 2 + 3) ──────────────────────────────────────
 from app.models import WeightChangeRequest
 from app.routers.admin.audit_trail import log_audit
 from app.schemas.weight_approval import WCRListOut, WCROut, WCRProposalCreate
+from app.services.career_vector_service import recompute_all_vectors
 from app.services.weight_approval import (
     snapshot_current_weights,
     validate_career_exists,
@@ -26,6 +28,7 @@ from app.services.weight_approval import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -1101,3 +1104,352 @@ def submit_weight_change_request(
     db.refresh(wcr)
 
     return _wcr_to_dict(wcr)
+
+
+# ---------------------------------------------------------------------------
+# Weight-approval spine — Stage 3
+# Review (approve/reject) and promote endpoints.
+# Promote is the FIRST stage that writes to career_keyskill_association.
+# ---------------------------------------------------------------------------
+
+class _ReviewDecision(BaseModel):
+    decision_comment: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W5 — List all weight-change requests (review queue feed)
+# GET /v1/admin-portal/weight-change-requests
+# ---------------------------------------------------------------------------
+
+@router.get("/weight-change-requests")
+def list_weight_change_requests(
+    status: Optional[str] = Query(None, description="Filter by status"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    params: dict = {}
+    where_clause = ""
+    if status:
+        where_clause = "WHERE status = :status"
+        params["status"] = status
+
+    rows = db.execute(
+        text(f"""
+            SELECT id, title, status, scope, changes,
+                   created_by, created_at, submitted_at,
+                   reviewed_by, reviewed_at, review_level,
+                   decision_comment, promoted_at, vectors_recomputed
+            FROM weight_change_requests
+            {where_clause}
+            ORDER BY created_at DESC
+        """),
+        params,
+    ).mappings().all()
+
+    items = [dict(r) for r in rows]
+    for item in items:
+        for ts_field in ("created_at", "submitted_at", "reviewed_at", "promoted_at"):
+            v = item.get(ts_field)
+            if v is not None and hasattr(v, "isoformat"):
+                item[ts_field] = v.isoformat()
+
+    return {"items": items, "total": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W6 — Approve a pending-review request (pending_review → approved)
+# POST /v1/admin-portal/weight-change-requests/{request_id}/approve
+# ---------------------------------------------------------------------------
+
+@router.post("/weight-change-requests/{request_id}/approve")
+def approve_weight_change_request(
+    request_id: int,
+    body: _ReviewDecision,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    wcr = db.query(WeightChangeRequest).filter(
+        WeightChangeRequest.id == request_id
+    ).first()
+    if not wcr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weight change request {request_id} not found",
+        )
+
+    if wcr.status != "pending_review":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "ok": False,
+                "error_code": "INVALID_STATUS_TRANSITION",
+                "message": (
+                    f"Cannot approve a request with status '{wcr.status}'. "
+                    "Only 'pending_review' requests may be approved."
+                ),
+            },
+        )
+
+    wcr.status = "approved"
+    wcr.reviewed_by = current_user.id
+    wcr.reviewed_at = datetime.now(timezone.utc)
+    wcr.decision_comment = body.decision_comment
+
+    log_audit(
+        db,
+        action="approve",
+        entity_type="weight_change_request",
+        entity_id=wcr.id,
+        entity_name=wcr.title or f"Request {wcr.id}",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={"previous_status": "pending_review", "new_status": "approved"},
+    )
+
+    db.commit()
+    db.refresh(wcr)
+
+    return _wcr_to_dict(wcr)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W7 — Reject a pending-review request (pending_review → rejected)
+# POST /v1/admin-portal/weight-change-requests/{request_id}/reject
+# ---------------------------------------------------------------------------
+
+@router.post("/weight-change-requests/{request_id}/reject")
+def reject_weight_change_request(
+    request_id: int,
+    body: _ReviewDecision,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    wcr = db.query(WeightChangeRequest).filter(
+        WeightChangeRequest.id == request_id
+    ).first()
+    if not wcr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weight change request {request_id} not found",
+        )
+
+    if wcr.status != "pending_review":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "ok": False,
+                "error_code": "INVALID_STATUS_TRANSITION",
+                "message": (
+                    f"Cannot reject a request with status '{wcr.status}'. "
+                    "Only 'pending_review' requests may be rejected."
+                ),
+            },
+        )
+
+    wcr.status = "rejected"
+    wcr.reviewed_by = current_user.id
+    wcr.reviewed_at = datetime.now(timezone.utc)
+    wcr.decision_comment = body.decision_comment
+
+    log_audit(
+        db,
+        action="reject",
+        entity_type="weight_change_request",
+        entity_id=wcr.id,
+        entity_name=wcr.title or f"Request {wcr.id}",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={"previous_status": "pending_review", "new_status": "rejected"},
+    )
+
+    db.commit()
+    db.refresh(wcr)
+
+    return _wcr_to_dict(wcr)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint W8 — Promote an approved request to live weights
+# POST /v1/admin-portal/weight-change-requests/{request_id}/promote
+#
+# This is the FIRST endpoint in the spine that writes to
+# career_keyskill_association.  The write is committed BEFORE vector recompute
+# so a recompute failure can never roll back the weight promotion.
+# ---------------------------------------------------------------------------
+
+_PROMOTE_UPSERT_SQL = text("""
+    INSERT INTO career_keyskill_association (career_id, keyskill_id, weight_percentage)
+    VALUES (:career_id, :keyskill_id, :weight_percentage)
+    ON CONFLICT (career_id, keyskill_id)
+    DO UPDATE SET weight_percentage = EXCLUDED.weight_percentage
+""")
+
+_PROMOTE_DELETE_SQL = text("""
+    DELETE FROM career_keyskill_association
+    WHERE career_id = :cid AND keyskill_id != ALL(:proposed_ids)
+""")
+
+
+@router.post("/weight-change-requests/{request_id}/promote")
+def promote_weight_change_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    wcr = db.query(WeightChangeRequest).filter(
+        WeightChangeRequest.id == request_id
+    ).first()
+    if not wcr:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Weight change request {request_id} not found",
+        )
+
+    # State guard: only approved → promoted
+    if wcr.status != "approved":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "ok": False,
+                "error_code": "INVALID_STATUS_TRANSITION",
+                "message": (
+                    f"Cannot promote a request with status '{wcr.status}'. "
+                    "Only 'approved' requests may be promoted."
+                ),
+            },
+        )
+
+    changes = wcr.changes  # [{career_id, proposed_weights, baseline_weights}, ...]
+
+    # PASS 1: Re-validate ALL career entries — any failure aborts with 422, zero writes.
+    validation_errors: dict = {}
+    for entry in changes:
+        career_id = entry["career_id"]
+        proposed = entry["proposed_weights"]
+        errors = validate_proposed_weights(proposed, db)
+        if errors:
+            validation_errors[str(career_id)] = errors
+
+    if validation_errors:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "ok": False,
+                "error_code": "REVALIDATION_FAILED",
+                "message": (
+                    "Proposed weights failed re-validation at promote time. "
+                    "No changes written."
+                ),
+                "validation_errors": validation_errors,
+            },
+        )
+
+    # PASS 2: SME-staleness warnings (non-blocking — collected, never abort).
+    sme_warnings: list = []
+    for entry in changes:
+        career_id = entry["career_id"]
+        proposed_ids_set = {item["keyskill_id"] for item in entry["proposed_weights"]}
+
+        live_rows = db.execute(
+            text(
+                "SELECT DISTINCT keyskill_id FROM career_keyskill_association "
+                "WHERE career_id = :cid"
+            ),
+            {"cid": career_id},
+        ).fetchall()
+        live_ids = {r[0] for r in live_rows}
+
+        removed_ids = sorted(live_ids - proposed_ids_set)
+        if removed_ids:
+            sme_rows = db.execute(
+                text(
+                    "SELECT DISTINCT keyskill_id FROM sme_keyskill_ratings "
+                    "WHERE career_id = :cid AND keyskill_id = ANY(:removed_ids)"
+                ),
+                {"cid": career_id, "removed_ids": removed_ids},
+            ).fetchall()
+            rated_removed = sorted(r[0] for r in sme_rows)
+            if rated_removed:
+                sme_warnings.append({
+                    "career_id": career_id,
+                    "removed_keyskill_ids_with_sme_ratings": rated_removed,
+                })
+
+    # THE WRITE — single transaction: upserts + deletes + WCR status + audit.
+    promoted_career_ids: list = []
+    for entry in changes:
+        career_id = entry["career_id"]
+        proposed = entry["proposed_weights"]
+        proposed_ids = [item["keyskill_id"] for item in proposed]
+
+        for item in proposed:
+            db.execute(
+                _PROMOTE_UPSERT_SQL,
+                {
+                    "career_id":         career_id,
+                    "keyskill_id":       item["keyskill_id"],
+                    "weight_percentage": item["weight_percentage"],
+                },
+            )
+
+        # Full replace: remove live pairs not present in proposed.
+        if proposed_ids:
+            db.execute(
+                _PROMOTE_DELETE_SQL,
+                {"cid": career_id, "proposed_ids": proposed_ids},
+            )
+
+        promoted_career_ids.append(career_id)
+
+    wcr.status = "promoted"
+    wcr.promoted_at = datetime.now(timezone.utc)
+    wcr.vectors_recomputed = False
+
+    log_audit(
+        db,
+        action="promote",
+        entity_type="weight_change_request",
+        entity_id=wcr.id,
+        entity_name=wcr.title or f"Request {wcr.id}",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        details={
+            "career_ids":   promoted_career_ids,
+            "sme_warnings": sme_warnings,
+        },
+    )
+
+    # Weights are now DURABLE — recompute failure cannot roll this back.
+    db.commit()
+
+    # THEN: vector recompute (after commit, non-fatal on failure).
+    vectors_recomputed = False
+    try:
+        recompute_all_vectors(db)   # issues its own db.commit() internally
+        wcr.vectors_recomputed = True
+        db.commit()
+        vectors_recomputed = True
+    except Exception as exc:
+        logger.warning(
+            "Vector recompute failed after promote (request_id=%s): %s. "
+            "Weights are committed. Retry via POST /v1/admin/careers/recompute-vectors.",
+            request_id,
+            exc,
+        )
+
+    return {
+        "ok":               True,
+        "status":           "promoted",
+        "request_id":       request_id,
+        "careers_promoted": promoted_career_ids,
+        "vectors_recomputed": vectors_recomputed,
+        "sme_warnings":     sme_warnings,
+        "recompute_note": (
+            ""
+            if vectors_recomputed
+            else (
+                "Vector recompute failed or is pending. "
+                "Retry via POST /v1/admin/careers/recompute-vectors."
+            )
+        ),
+    }
