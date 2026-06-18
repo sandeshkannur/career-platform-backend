@@ -27,6 +27,14 @@ from app.services.weight_approval import (
     validate_proposed_weights,
 )
 
+# ── Weight-snapshot spine (Stage 1) ──────────────────────────────────────────
+from app.services.weight_snapshots import (
+    capture_promote_snapshot,
+    capture_snapshot,
+    read_career_weights,
+    read_full_table_weights,
+)
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -1422,6 +1430,17 @@ def promote_weight_change_request(
     # Weights are now DURABLE — recompute failure cannot roll this back.
     db.commit()
 
+    # THEN: auto-capture pre-promote snapshot (after commit, non-fatal on failure).
+    # Isolated try/except — must not affect the recompute block below.
+    try:
+        capture_promote_snapshot(db, wcr, created_by=current_user.id)
+    except Exception as exc:
+        logger.warning(
+            "Snapshot capture failed after promote (request_id=%s): %s",
+            request_id,
+            exc,
+        )
+
     # THEN: vector recompute (after commit, non-fatal on failure).
     vectors_recomputed = False
     try:
@@ -1452,4 +1471,101 @@ def promote_weight_change_request(
                 "Retry via POST /v1/admin/careers/recompute-vectors."
             )
         ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Weight-snapshot spine — Stage 1
+# Capture endpoints (manual). Restore is Stage 3.
+# ---------------------------------------------------------------------------
+
+class _SnapshotCreate(BaseModel):
+    scope_type: str           # 'full' | 'career'
+    career_id:  Optional[int] = None
+    alias:      Optional[str] = None
+    reason:     Optional[str] = None
+
+
+@router.post("/weight-snapshots")
+def create_weight_snapshot(
+    body: _SnapshotCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """
+    POST /v1/admin-portal/weight-snapshots
+
+    Capture a manual named snapshot of career_keyskill_association.
+    source is always 'manual' for this endpoint.
+
+    scope_type='full'   — snapshots the entire CKA table.
+    scope_type='career' — snapshots one career; career_id required.
+
+    Returns: snapshot metadata + row count. Does NOT return the full JSONB
+    payload (potentially large); retrieve it via GET /weight-snapshots/{id}.
+    """
+    if body.scope_type not in ("full", "career"):
+        raise HTTPException(
+            status_code=422,
+            detail="scope_type must be 'full' or 'career'",
+        )
+
+    scope_ref: Optional[int] = None
+
+    if body.scope_type == "career":
+        if body.career_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="career_id is required when scope_type='career'",
+            )
+        career = validate_career_exists(body.career_id, db)
+        if not career:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Career {body.career_id} not found",
+            )
+        scope_ref      = body.career_id
+        snapshot_rows  = read_career_weights(db, body.career_id)
+    else:
+        snapshot_rows  = read_full_table_weights(db)
+
+    snap = capture_snapshot(
+        db,
+        scope_type    = body.scope_type,
+        scope_ref     = scope_ref,
+        source        = "manual",
+        snapshot_rows = snapshot_rows,
+        created_by    = current_user.id,
+        alias         = body.alias,
+        reason        = body.reason,
+    )
+    db.flush()  # populate snap.id before audit log
+
+    log_audit(
+        db,
+        action      = "create",
+        entity_type = "weight_snapshot",
+        entity_id   = snap.id,
+        entity_name = snap.name,
+        user_id     = current_user.id,
+        user_email  = current_user.email,
+        details     = {
+            "scope_type": body.scope_type,
+            "scope_ref":  scope_ref,
+            "row_count":  len(snapshot_rows),
+        },
+    )
+
+    db.commit()
+    db.refresh(snap)
+
+    return {
+        "id":         snap.id,
+        "name":       snap.name,
+        "alias":      snap.alias,
+        "scope_type": snap.scope_type,
+        "scope_ref":  snap.scope_ref,
+        "source":     snap.source,
+        "created_at": snap.created_at.isoformat() if snap.created_at else None,
+        "row_count":  len(snapshot_rows),
     }

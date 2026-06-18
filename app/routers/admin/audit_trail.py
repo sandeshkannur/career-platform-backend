@@ -46,6 +46,7 @@ VALID_ENTITY_TYPES = {
     "sme_profile", "sme_submission",
     "fit_band", "cps_factor", "aq",
     "weight_change_request",
+    "weight_snapshot",
 }
 
 
