@@ -1,11 +1,12 @@
 """
-Weight-snapshot service — Stage 1 (capture only, no restore).
+Weight-snapshot service — Stage 1 + Stage 2 (capture + read/diff; no restore).
 
 Public surface:
     read_full_table_weights(db)            -> list of all CKA rows
     read_career_weights(db, career_id)     -> CKA rows for one career
     capture_snapshot(db, *, ...)           -> WeightSnapshot (caller commits)
     capture_promote_snapshot(db, wcr, ...) -> WeightSnapshot (commits internally)
+    compute_diff(snapshot_rows, live_rows) -> structured diff (Stage 2, read-only)
 """
 from __future__ import annotations
 
@@ -192,3 +193,131 @@ def capture_promote_snapshot(
         wcr_id        = wcr.id,
         _commit       = True,
     )
+
+
+# ── Diff (Stage 2, read-only) ──────────────────────────────────────────────────
+
+def compute_diff(
+    snapshot_rows: list[dict[str, Any]],
+    live_rows:     list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Compare snapshot weights against live career_keyskill_association weights.
+
+    DIFF DIRECTION — restore semantics:
+        Each row is described from the perspective of "what would change in LIVE
+        if this snapshot were restored."
+
+        change='removed'   — keyskill exists in snapshot but NOT in live.
+                             Restoring would ADD it back to live.
+        change='added'     — keyskill exists in live but NOT in snapshot.
+                             Restoring would REMOVE it from live.
+        change='changed'   — both have the keyskill but weights differ.
+                             Restoring would UPDATE live weight to snapshot weight.
+        change='unchanged' — both agree; restore would leave it untouched.
+
+    This direction is intentional and must be read the same way by B22.3 (the
+    restore endpoint). The label names describe the keyskill's fate in LIVE
+    after a restore, NOT the direction of data movement.
+
+    Returns a dict:
+        {
+          "careers": [
+            {
+              "career_id": int,
+              "rows": [
+                {
+                  "keyskill_id":       int,
+                  "snapshot_weight":   int | None,
+                  "live_weight":       int | None,
+                  "change":            'added'|'removed'|'changed'|'unchanged'
+                },
+                ...
+              ],
+              "n_added":     int,   # restore would remove these from live
+              "n_removed":   int,   # restore would add these back to live
+              "n_changed":   int,
+              "n_unchanged": int,
+            },
+            ...
+          ],
+          "summary": {
+            "total_careers_with_changes": int,
+            "total_rows_that_would_change": int,   # added + removed + changed
+          }
+        }
+
+    Pure function — reads no DB, writes nothing.
+    """
+    # Index snapshot: (career_id, keyskill_id) -> weight_percentage
+    snap_index: dict[tuple[int, int], int] = {
+        (r["career_id"], r["keyskill_id"]): r["weight_percentage"]
+        for r in snapshot_rows
+    }
+    # Index live: (career_id, keyskill_id) -> weight_percentage
+    live_index: dict[tuple[int, int], int] = {
+        (r["career_id"], r["keyskill_id"]): r["weight_percentage"]
+        for r in live_rows
+    }
+
+    # Union of all (career_id, keyskill_id) pairs
+    all_keys = snap_index.keys() | live_index.keys()
+
+    # Group by career_id
+    from collections import defaultdict
+    by_career: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for (career_id, keyskill_id) in sorted(all_keys):
+        snap_w = snap_index.get((career_id, keyskill_id))
+        live_w = live_index.get((career_id, keyskill_id))
+
+        if snap_w is None:
+            change = "added"       # live has it, snapshot doesn't → restore removes
+        elif live_w is None:
+            change = "removed"     # snapshot has it, live doesn't → restore adds back
+        elif snap_w != live_w:
+            change = "changed"
+        else:
+            change = "unchanged"
+
+        by_career[career_id].append(
+            {
+                "keyskill_id":     keyskill_id,
+                "snapshot_weight": snap_w,
+                "live_weight":     live_w,
+                "change":          change,
+            }
+        )
+
+    careers_out: list[dict[str, Any]] = []
+    total_careers_with_changes = 0
+    total_rows_that_would_change = 0
+
+    for career_id in sorted(by_career):
+        rows = by_career[career_id]
+        n_added     = sum(1 for r in rows if r["change"] == "added")
+        n_removed   = sum(1 for r in rows if r["change"] == "removed")
+        n_changed   = sum(1 for r in rows if r["change"] == "changed")
+        n_unchanged = sum(1 for r in rows if r["change"] == "unchanged")
+        rows_changing = n_added + n_removed + n_changed
+
+        careers_out.append(
+            {
+                "career_id":   career_id,
+                "rows":        rows,
+                "n_added":     n_added,
+                "n_removed":   n_removed,
+                "n_changed":   n_changed,
+                "n_unchanged": n_unchanged,
+            }
+        )
+        if rows_changing > 0:
+            total_careers_with_changes   += 1
+            total_rows_that_would_change += rows_changing
+
+    return {
+        "careers": careers_out,
+        "summary": {
+            "total_careers_with_changes":   total_careers_with_changes,
+            "total_rows_that_would_change": total_rows_that_would_change,
+        },
+    }

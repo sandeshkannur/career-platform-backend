@@ -27,10 +27,11 @@ from app.services.weight_approval import (
     validate_proposed_weights,
 )
 
-# ── Weight-snapshot spine (Stage 1) ──────────────────────────────────────────
+# ── Weight-snapshot spine (Stage 1 + 2) ──────────────────────────────────────
 from app.services.weight_snapshots import (
     capture_promote_snapshot,
     capture_snapshot,
+    compute_diff,
     read_career_weights,
     read_full_table_weights,
 )
@@ -1568,4 +1569,141 @@ def create_weight_snapshot(
         "source":     snap.source,
         "created_at": snap.created_at.isoformat() if snap.created_at else None,
         "row_count":  len(snapshot_rows),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Weight-snapshot spine — Stage 2
+# Read-only: list, get-one, diff. Writes NOTHING.
+# ---------------------------------------------------------------------------
+
+@router.get("/weight-snapshots")
+def list_weight_snapshots(
+    scope_type: Optional[str] = Query(None, description="Filter by scope_type ('full'|'career')"),
+    source:     Optional[str] = Query(None, description="Filter by source ('manual'|'auto_promote'|'pre_restore')"),
+    career_id:  Optional[int] = Query(None, description="Filter by scope_ref (career_id)"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """
+    GET /v1/admin-portal/weight-snapshots
+
+    List snapshots newest first. Returns light metadata only — the full
+    snapshot JSONB is NOT included (use GET /weight-snapshots/{id} for that).
+    row_count is derived from the stored JSONB length without fetching the array.
+    """
+    params: dict = {}
+    clauses: list[str] = []
+
+    if scope_type:
+        clauses.append("scope_type = :scope_type")
+        params["scope_type"] = scope_type
+    if source:
+        clauses.append("source = :source")
+        params["source"] = source
+    if career_id is not None:
+        clauses.append("scope_ref = :career_id")
+        params["career_id"] = career_id
+
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    rows = db.execute(
+        text(f"""
+            SELECT id, name, alias, scope_type, scope_ref, source, wcr_id,
+                   created_by, created_at,
+                   jsonb_array_length(snapshot) AS row_count
+            FROM weight_snapshots
+            {where}
+            ORDER BY created_at DESC
+        """),
+        params,
+    ).mappings().all()
+
+    items = []
+    for r in rows:
+        item = dict(r)
+        if item.get("created_at") is not None and hasattr(item["created_at"], "isoformat"):
+            item["created_at"] = item["created_at"].isoformat()
+        items.append(item)
+
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/weight-snapshots/{snapshot_id}")
+def get_weight_snapshot(
+    snapshot_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """
+    GET /v1/admin-portal/weight-snapshots/{snapshot_id}
+
+    Full snapshot detail including the stored JSONB weight array.
+    """
+    from app.models import WeightSnapshot as _WS
+
+    snap = db.query(_WS).filter(_WS.id == snapshot_id).first()
+    if not snap:
+        raise HTTPException(status_code=404, detail=f"Snapshot {snapshot_id} not found")
+
+    return {
+        "id":         snap.id,
+        "name":       snap.name,
+        "alias":      snap.alias,
+        "reason":     snap.reason,
+        "scope_type": snap.scope_type,
+        "scope_ref":  snap.scope_ref,
+        "source":     snap.source,
+        "wcr_id":     snap.wcr_id,
+        "created_by": snap.created_by,
+        "created_at": snap.created_at.isoformat() if snap.created_at else None,
+        "snapshot":   snap.snapshot,
+        "row_count":  len(snap.snapshot) if snap.snapshot else 0,
+    }
+
+
+@router.get("/weight-snapshots/{snapshot_id}/diff")
+def diff_weight_snapshot(
+    snapshot_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin_or_counsellor),
+):
+    """
+    GET /v1/admin-portal/weight-snapshots/{snapshot_id}/diff
+
+    Compare this snapshot against CURRENT live career_keyskill_association.
+
+    Diff direction — restore semantics (B22.3 must read this the same way):
+      change='removed'   → keyskill in snapshot, missing from live;
+                           restoring would ADD it back to live.
+      change='added'     → keyskill in live, missing from snapshot;
+                           restoring would REMOVE it from live.
+      change='changed'   → weights differ; restoring would UPDATE live.
+      change='unchanged' → weights agree; restore leaves it untouched.
+
+    For scope='career' snapshots, only that career's live weights are fetched.
+    For scope='full' snapshots, the full CKA table is fetched.
+    Writes nothing to any table.
+    """
+    from app.models import WeightSnapshot as _WS
+
+    snap = db.query(_WS).filter(_WS.id == snapshot_id).first()
+    if not snap:
+        raise HTTPException(status_code=404, detail=f"Snapshot {snapshot_id} not found")
+
+    snapshot_rows: list = snap.snapshot or []
+
+    if snap.scope_type == "career" and snap.scope_ref is not None:
+        live_rows = read_career_weights(db, snap.scope_ref)
+    else:
+        live_rows = read_full_table_weights(db)
+
+    diff = compute_diff(snapshot_rows, live_rows)
+
+    return {
+        "snapshot_id":   snap.id,
+        "snapshot_name": snap.name,
+        "scope_type":    snap.scope_type,
+        "scope_ref":     snap.scope_ref,
+        **diff,
     }
