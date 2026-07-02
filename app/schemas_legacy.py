@@ -33,6 +33,7 @@ class UserCreate(BaseModel):
     dob: date
     grade: int
     guardian_email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
     role: Optional[str] = "student"
 
 
