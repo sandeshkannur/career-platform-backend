@@ -60,3 +60,7 @@ try:
     from .weight_approval import *  # noqa: F401,F403
 except Exception:
     pass
+try:
+    from .auth_otp import *  # noqa: F401,F403
+except Exception:
+    pass
