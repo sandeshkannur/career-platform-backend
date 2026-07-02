@@ -545,3 +545,152 @@ def get_my_session(
         tier=getattr(user, "tier", "free"),
         message="Session active",
     )
+
+
+def _utcnow_naive():
+    return datetime.utcnow()
+
+
+@router.post("/otp/request", response_model=schemas.OtpRequestOut)
+def request_login_otp(
+    payload: schemas.OtpRequestIn,
+    request: Request,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Requests an OTP for phone-based login.
+    - Phone must already be on file for an existing user.
+    - Rate limited: 60s cooldown + max 5/hour per phone.
+    - DEV/TEST (ENV=dev|test): returns the OTP directly in the response
+      for testing without an SMS gateway. NEVER returned in prod.
+    - Role-agnostic by design: works for any role with a phone_number set.
+    """
+    phone = (payload.phone_number or "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+
+    user = db.query(models.User).filter(models.User.phone_number == phone).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="No account found for this phone number. Sign up with a phone number first.",
+        )
+
+    now = _utcnow_naive()
+    ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    last = (
+        db.query(models.LoginOtp)
+        .filter(models.LoginOtp.phone_number == phone)
+        .order_by(models.LoginOtp.created_at.desc())
+        .first()
+    )
+    if last and (now - last.created_at.replace(tzinfo=None)).total_seconds() < 60:
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
+
+    window_start = now - timedelta(hours=1)
+    sent_last_hour = (
+        db.query(models.LoginOtp)
+        .filter(
+            models.LoginOtp.phone_number == phone,
+            models.LoginOtp.created_at >= window_start,
+        )
+        .count()
+    )
+    if sent_last_hour >= 5:
+        raise HTTPException(status_code=429, detail="Too many OTP requests. Try again later.")
+
+    from app.utils.consent_request import generate_otp, hash_otp_sha256
+
+    otp_plain = generate_otp()
+    otp_hash = hash_otp_sha256(otp_plain)
+    expires_at = now + timedelta(minutes=10)
+
+    row = models.LoginOtp(
+        phone_number=phone,
+        otp_hash=otp_hash,
+        attempts=0,
+        expires_at=expires_at,
+        ip=ip,
+        user_agent=user_agent,
+    )
+    db.add(row)
+    db.commit()
+
+    print("=== LOGIN OTP REQUEST (DEV STUB) ===")
+    print("phone_number:", phone)
+    print("otp:", otp_plain)
+    print("expires_at:", expires_at.isoformat())
+    print("=====================================")
+
+    if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+        return {"expires_at": expires_at, "dev": {"otp": otp_plain}}
+
+    return {"expires_at": expires_at, "dev": None}
+
+
+@router.post("/otp/verify", response_model=schemas.Token)
+def verify_login_otp(
+    payload: schemas.OtpVerifyIn,
+    response: Response,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Verifies an OTP and issues the same access+refresh token pair that
+    email/password login does. Token shape is identical (sub=user.email),
+    so every downstream route works unmodified regardless of login channel
+    or role.
+    """
+    phone = (payload.phone_number or "").strip()
+    otp = (payload.otp or "").strip()
+
+    from app.utils.consent_request import hash_otp_sha256
+
+    now = _utcnow_naive()
+
+    row = (
+        db.query(models.LoginOtp)
+        .filter(
+            models.LoginOtp.phone_number == phone,
+            models.LoginOtp.verified_at.is_(None),
+        )
+        .order_by(models.LoginOtp.created_at.desc())
+        .first()
+    )
+
+    if not row:
+        raise HTTPException(status_code=400, detail="No pending OTP for this phone number")
+
+    if row.expires_at.replace(tzinfo=None) <= now:
+        raise HTTPException(status_code=400, detail="OTP expired")
+
+    if row.attempts >= 5:
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Request a new OTP.")
+
+    if hash_otp_sha256(otp) != row.otp_hash:
+        row.attempts += 1
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    row.verified_at = now
+    db.commit()
+
+    user = db.query(models.User).filter(models.User.phone_number == phone).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    if not is_beta_email_allowed(user.email):
+        raise HTTPException(status_code=403, detail="Beta access restricted.")
+
+    access_token = create_access_token(
+        data={"sub": user.email, "role": getattr(user, "role", "student"), "type": "access"},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    refresh_token = create_access_token(
+        data={"sub": user.email, "type": "refresh"},
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    _set_refresh_cookie(response, refresh_token)
+
+    return schemas.Token(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
