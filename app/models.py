@@ -37,6 +37,26 @@ JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 # Core identity & profiles
 # =========================================================
 
+# =========================================================
+# INTENDED ROLE HIERARCHY (design note — not yet fully implemented)
+#
+#   Admin        — platform owner/operator, full system access
+#   Parent       — PLANNED, NOT YET BUILT. Will be a real login-capable
+#                  role with its own account, own phone_number, and a
+#                  dashboard scoped to their linked child(ren). Today,
+#                  "guardian" is only a contact email field on the
+#                  student's own User row (see guardian_email below) —
+#                  there is no Parent account or Parent login yet.
+#   Counsellor   — school/platform counsellor, cross-student visibility
+#   Student      — the assessment-taker, default role
+#
+# role is intentionally a plain string column (not a DB enum), so adding
+# "parent" as a valid value later requires no migration. The phone_number
+# column and /v1/auth/otp/* endpoints added in this pass are role-agnostic
+# by design — they look up users by phone_number only, not by role — so
+# a future Parent role can reuse the same OTP login mechanism unchanged.
+# =========================================================
+
 class User(Base):
     """
     User model – supports minors and roles (auth identity).
@@ -51,6 +71,7 @@ class User(Base):
     is_minor = Column(Boolean, nullable=False, default=False)
     tier = Column(String, nullable=False, default="free")
     guardian_email = Column(String, nullable=True)
+    phone_number = Column(String(20), unique=True, nullable=True, index=True)
     role = Column(String, nullable=False, default="student")
     subscription_tier = Column(String(20), nullable=True, default="free")
 
@@ -710,6 +731,33 @@ class ConsentLog(Base):
     ip = Column(String(64), nullable=True)
     user_agent = Column(Text, nullable=True)
 
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class LoginOtp(Base):
+    """
+    Login OTP — repeated-use, rate-limited, separate from ConsentLog.
+
+    Unlike guardian consent (one-shot, JWT-embedded), login OTPs are
+    requested repeatedly by the same phone number, so they need their
+    own attempt-tracking and rate-limit row per request rather than a
+    self-contained token. Reuses generate_otp()/hash_otp_sha256() from
+    app.utils.consent_request — never store the raw OTP.
+
+    Deliberately role-agnostic: looked up by phone_number only, so a
+    future Parent role (see role-hierarchy note above) can reuse this
+    exact mechanism without changes.
+    """
+    __tablename__ = "login_otps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(20), nullable=False, index=True)
+    otp_hash = Column(String(64), nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 # =========================================================
