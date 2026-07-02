@@ -618,11 +618,12 @@ def request_login_otp(
     db.add(row)
     db.commit()
 
-    print("=== LOGIN OTP REQUEST (DEV STUB) ===")
-    print("phone_number:", phone)
-    print("otp:", otp_plain)
-    print("expires_at:", expires_at.isoformat())
-    print("=====================================")
+    if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+        print("=== LOGIN OTP REQUEST (DEV STUB) ===")
+        print("phone_number:", phone)
+        print("otp:", otp_plain)
+        print("expires_at:", expires_at.isoformat())
+        print("=====================================")
 
     if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
         return {"expires_at": expires_at, "dev": {"otp": otp_plain}}
