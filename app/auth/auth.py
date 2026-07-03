@@ -287,6 +287,7 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
             dob=user_in.dob,
             is_minor=is_minor,
             guardian_email=user_in.guardian_email,
+            phone_number=(user_in.phone_number or "").strip() or None,
             role=user_in.role,
         )
         db.add(new_user)
