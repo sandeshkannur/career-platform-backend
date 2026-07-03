@@ -37,6 +37,6 @@ make_qft_upload_ready.py
 data/
 
 # Claude Code configuration
-.claude/
+.claude/*
 
 !.claude/settings.json
