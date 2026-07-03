@@ -541,6 +541,8 @@ def get_my_session(
         role=getattr(user, "role", "student"),
         is_minor=user.is_minor,
         guardian_email=getattr(user, "guardian_email", None),
+        phone_number=getattr(user, "phone_number", None),
+        dob=getattr(user, "dob", None),
         student_profile=student_profile,
         consent_verified=bool(consent_verified),
         tier=getattr(user, "tier", "free"),
