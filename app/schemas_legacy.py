@@ -1084,6 +1084,8 @@ class SessionUserOut(BaseModel):
     role: str
     is_minor: bool
     guardian_email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
+    dob: Optional[date] = None
     student_profile: Optional[StudentProfileOut] = None
 
     # ✅ IMPORTANT:
