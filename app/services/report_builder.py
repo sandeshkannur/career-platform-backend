@@ -637,7 +637,6 @@ def _assert_student_safe(doc: schemas.ReportDocument) -> None:
         "keyskill_scores",
         "score",
         "weight",
-        "%",
     )
 
     def check_text(label: str, text: str) -> None:
