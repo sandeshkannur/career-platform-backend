@@ -27,6 +27,27 @@ _ALLOWED_CLUSTER_NAME_KEYS = ("cluster_name", "cluster")
 # Basic safety filters (student-safe guard also checks later)
 _FORBIDDEN_TOKENS = ("career_id", "facet_id", "aq_id", "score", "weight", "%")
 
+# 5-star fit indicator — same mapping locked on the frontend
+_FIT_BAND_STARS = {
+    "high_potential": 5,
+    "strong": 4,
+    "promising": 3,
+    "developing": 2,
+    "exploring": 1,
+}
+
+# Fallback labels — mirror the fit_band_config seed (admin can override in DB)
+_FIT_BAND_FALLBACK_LABELS = {
+    "high_potential": "High Potential",
+    "strong": "Strong",
+    "promising": "Promising",
+    "developing": "Developing",
+    "exploring": "Exploring",
+}
+
+# Careers shown in the downloadable PDF summary per tier
+_DOWNLOAD_SUMMARY_CAREER_LIMITS = {"free": 5, "paid": 9}
+
 
 def _normalize_text(s: str) -> str:
     """Normalize whitespace + strip risky junk without being destructive."""
@@ -228,6 +249,104 @@ def resolve_explainability_text(
 
 
 # ----------------------------
+# Download-summary helpers (PDF variant)
+# ----------------------------
+
+def _shorten(text: str, max_len: int = 240) -> str:
+    """Trim long copy to a short, word-boundary-safe snippet for the PDF card."""
+    t = _normalize_text(text)
+    if len(t) <= max_len:
+        return t
+    cut = t[:max_len].rsplit(" ", 1)[0].rstrip(",;:.")
+    return cut + "…"
+
+
+def resolve_fit_band_label(db: Session, band_key: str | None) -> str | None:
+    """
+    Resolve the student-facing band label the same way the frontend does:
+    fit_band_config.label (admin-adjustable), falling back to the seeded defaults.
+    """
+    if not band_key:
+        return None
+    try:
+        row = (
+            db.query(models.FitBandConfig)
+            .filter(models.FitBandConfig.band_key == band_key)
+            .first()
+        )
+        if row and row.label:
+            return str(row.label)
+    except Exception:
+        pass  # table may be absent in minimal environments; fall back
+    return _FIT_BAND_FALLBACK_LABELS.get(band_key)
+
+
+def extract_career_entries_from_recommended_careers(rc: Any) -> list[dict]:
+    """
+    Structured (allowlist-only) extraction for the PDF download summary.
+    Each entry carries ONLY display-safe fields:
+      title, fit_band_key, description, cluster
+    Everything else in the stored payload (salary, pathways, matched_keyskills,
+    automation risk, future outlook, explainability, …) is dropped by construction.
+    """
+    entries: list[dict] = []
+
+    if isinstance(rc, dict):
+        for candidate_key in ("items", "careers", "recommended_careers", "results"):
+            if isinstance(rc.get(candidate_key), list):
+                rc = rc[candidate_key]
+                break
+
+    if not isinstance(rc, list):
+        return entries
+
+    seen_titles: set[str] = set()
+    for item in rc:
+        if isinstance(item, str):
+            title = _normalize_text(item)
+            if title and title not in seen_titles:
+                seen_titles.add(title)
+                entries.append({"title": title, "fit_band_key": None, "description": None, "cluster": None})
+            continue
+
+        if not isinstance(item, dict):
+            continue
+
+        # Tolerate nested containers inside list items
+        for nested_key in ("items", "careers", "recommended_careers", "results"):
+            nested_val = item.get(nested_key)
+            if isinstance(nested_val, list):
+                entries.extend(extract_career_entries_from_recommended_careers(nested_val))
+                break
+        else:
+            title = _extract_first_str(item, _ALLOWED_CAREER_NAME_KEYS)
+            if not title or title in seen_titles:
+                continue
+            if any(tok in title.lower() for tok in _FORBIDDEN_TOKENS):
+                continue
+            seen_titles.add(title)
+
+            band_key = item.get("fit_band_key")
+            band_key = band_key if band_key in _FIT_BAND_STARS else None
+
+            description = item.get("description")
+            description = _shorten(description) if isinstance(description, str) and description.strip() else None
+
+            cluster = _extract_first_str(item, _ALLOWED_CLUSTER_NAME_KEYS)
+
+            entries.append(
+                {
+                    "title": title,
+                    "fit_band_key": band_key,
+                    "description": description,
+                    "cluster": cluster,
+                }
+            )
+
+    return entries
+
+
+# ----------------------------
 # Report Builder (canonical ReportDocument)
 # ----------------------------
 
@@ -239,12 +358,21 @@ def build_report_document(
     assessment_result: "models.AssessmentResult",
     view: str,
     locale: str,
+    tier: str = "free",
+    variant: str = "full",
 ) -> schemas.ReportDocument:
     """
     Build the canonical report document:
     - sections[] containing renderable blocks
     - no internal IDs / raw scoring in student view
     - can be expanded later without breaking contract
+
+    tier: "free" | "paid" — resolved by the router from the student's User.tier
+          (only affects the download_summary variant: 5 vs 9 careers)
+    variant:
+      - "full" (default): existing on-screen section set, unchanged
+      - "download_summary": reduced section set for the downloadable PDF
+        (summary, careers, cluster_signals, return_to_account)
     """
 
     # Choose a stable content versioning rule:
@@ -277,6 +405,88 @@ def build_report_document(
             ],
         )
     )
+
+    # --- Download-summary variant (PDF): reduced, deliberately lightweight ---
+    if variant == "download_summary":
+        entries = extract_career_entries_from_recommended_careers(
+            assessment_result.recommended_careers or []
+        )
+        max_careers = _DOWNLOAD_SUMMARY_CAREER_LIMITS.get(tier, _DOWNLOAD_SUMMARY_CAREER_LIMITS["free"])
+        entries = entries[:max_careers]
+
+        # 2) Careers — title + fit band + short description + cluster ONLY
+        career_blocks: List[schemas.ReportBlock] = []
+        for e in entries:
+            career_blocks.append(
+                schemas.ReportBlock(
+                    kind="career_card",
+                    career_title=e["title"],
+                    fit_band_key=e["fit_band_key"],
+                    fit_band_label=resolve_fit_band_label(db, e["fit_band_key"]),
+                    description=e["description"],
+                    cluster_name=e["cluster"],
+                )
+            )
+        if career_blocks:
+            sections.append(
+                schemas.ReportSection(
+                    type="careers",
+                    title="Top Career Options",
+                    blocks=career_blocks,
+                )
+            )
+
+        # 3) Cluster signals — same grouping as ClusterStrengthMap (group + count)
+        cluster_counts: Dict[str, int] = {}
+        for e in entries:
+            if e["cluster"]:
+                cluster_counts[e["cluster"]] = cluster_counts.get(e["cluster"], 0) + 1
+        if cluster_counts:
+            signal_items = [
+                f"{name} — {count} career" + ("s" if count != 1 else "")
+                for name, count in cluster_counts.items()
+            ]
+            sections.append(
+                schemas.ReportSection(
+                    type="cluster_signals",
+                    title="Cluster Signals",
+                    blocks=[schemas.ReportBlock(kind="bullets", items=signal_items)],
+                )
+            )
+
+        # 4) Closing CTA + disclaimer
+        sections.append(
+            schemas.ReportSection(
+                type="return_to_account",
+                title="See Your Full Results",
+                blocks=[
+                    schemas.ReportBlock(
+                        kind="callout",
+                        text=(
+                            "Log in to your account on the web or mobile app to explore your "
+                            "full results — career pathways, salary ranges, premium insights, "
+                            "and guided next steps."
+                        ),
+                    ),
+                    schemas.ReportBlock(
+                        kind="paragraph",
+                        text=(
+                            "This document is a summary snapshot, not a complete record. The full "
+                            "assessment methodology and your detailed results are available only in "
+                            "your account. It is intended for personal and educational reference only "
+                            "and does not constitute professional career counselling advice."
+                        ),
+                    ),
+                ],
+            )
+        )
+
+        doc = schemas.ReportDocument(report_meta=meta, sections=sections)
+
+        # Guard rail runs unconditionally for the downloadable artifact —
+        # it is student-facing regardless of who requested it.
+        _assert_student_safe(doc)
+        return doc
 
     # --- Clusters & Careers from assessment_result ---
     # assessment_result.recommended_careers is jsonb; keep it flexible.
@@ -448,6 +658,20 @@ def _assert_student_safe(doc: schemas.ReportDocument) -> None:
             if b.explanation_text:
                 check_text(f"section[{si}].block[{bi}].explanation_text", b.explanation_text)
 
+            # career_card fields (PDF download summary)
+            if b.career_title:
+                check_text(f"section[{si}].block[{bi}].career_title", b.career_title)
+            if b.fit_band_label:
+                check_text(f"section[{si}].block[{bi}].fit_band_label", b.fit_band_label)
+            if b.description:
+                check_text(f"section[{si}].block[{bi}].description", b.description)
+            if b.cluster_name:
+                check_text(f"section[{si}].block[{bi}].cluster_name", b.cluster_name)
+            if b.fit_band_key is not None and b.fit_band_key not in _FIT_BAND_STARS:
+                raise ValueError(
+                    f"Student-safe violation: unknown fit_band_key in section[{si}].block[{bi}]"
+                )
+
             # items must be list[str] only and must not contain forbidden tokens
             if b.items is not None:
                 if not isinstance(b.items, list) or any(not isinstance(x, str) for x in b.items):
@@ -501,6 +725,116 @@ def render_report_html(doc: schemas.ReportDocument) -> str:
                 items = b.items or []
                 parts.append("<ul>")
                 for it in items:
+                    parts.append(f"<li>{esc(it)}</li>")
+                parts.append("</ul>")
+
+    parts.append("</body></html>")
+    return "".join(parts)
+
+
+# ----------------------------
+# PDF renderer (download summary) — separate from render_report_html on purpose
+# ----------------------------
+
+def _render_fit_stars_html(band_key: str | None) -> str:
+    """
+    Inline-HTML 5-star fit indicator (same mapping as the frontend):
+    high_potential=5, strong=4, promising=3, developing=2, exploring=1.
+    Filled stars in --color-primary, unfilled at ~22% opacity (via rgba).
+    """
+    filled = _FIT_BAND_STARS.get(band_key or "", 0)
+    if filled <= 0:
+        return ""
+    empty = 5 - filled
+    return (
+        "<span style='font-size:13px;letter-spacing:2px;'>"
+        f"<span style='color:#2540D9;'>{'★' * filled}</span>"
+        f"<span style='color:rgba(37,64,217,0.22);'>{'★' * empty}</span>"
+        "</span>"
+    )
+
+
+def render_report_pdf_html(doc: schemas.ReportDocument) -> str:
+    """
+    Print-friendly HTML for the downloadable PDF summary (WeasyPrint input).
+
+    - Brand tokens from palette-spec.md:
+        --color-primary #2540D9 (headings/accents)
+        --color-ink-900 #111521 (body text)
+        --color-paper   #F8FAF9 (page background)
+    - Kannada-safe font stack: 'Noto Sans Kannada', 'Noto Sans', Arial, sans-serif
+      (fonts installed at OS level in the backend Docker image)
+    - Do NOT reuse for the on-screen format=html path; that stays render_report_html.
+    """
+
+    def esc(s: str) -> str:
+        return (
+            (s or "")
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    font_stack = "'Noto Sans Kannada', 'Noto Sans', Arial, sans-serif"
+
+    parts: List[str] = []
+    parts.append("<!doctype html><html><head><meta charset='utf-8'/>")
+    parts.append("<title>Career Report Summary</title>")
+    parts.append(
+        "<style>"
+        "@page { size: A4; margin: 18mm 16mm; }"
+        f"body {{ font-family: {font_stack}; background: #F8FAF9; color: #111521; "
+        "font-size: 11.5px; line-height: 1.55; margin: 0; }"
+        "h1 { color: #2540D9; font-size: 21px; margin: 0 0 2px 0; }"
+        "h2 { color: #2540D9; font-size: 14px; margin: 18px 0 8px 0; "
+        "border-bottom: 1.5px solid #2540D9; padding-bottom: 3px; }"
+        ".meta { color: #111521; opacity: 0.65; font-size: 9.5px; margin-bottom: 4px; }"
+        ".card { border: 1px solid rgba(37,64,217,0.18); border-radius: 8px; "
+        "padding: 9px 12px; margin: 0 0 8px 0; background: #ffffff; page-break-inside: avoid; }"
+        ".card-title { font-weight: bold; font-size: 12.5px; color: #111521; }"
+        ".band-label { color: #2540D9; font-size: 10.5px; font-weight: bold; margin-left: 6px; }"
+        ".cluster { opacity: 0.7; font-size: 10px; margin-top: 1px; }"
+        ".desc { margin-top: 4px; }"
+        ".callout { border-left: 3px solid #2540D9; background: rgba(37,64,217,0.06); "
+        "padding: 8px 12px; border-radius: 4px; margin: 6px 0; }"
+        ".disclaimer { font-size: 9px; opacity: 0.7; margin-top: 8px; }"
+        "ul { margin: 4px 0 4px 18px; padding: 0; }"
+        "li { margin-bottom: 2px; }"
+        "</style></head><body>"
+    )
+
+    parts.append("<h1>Career Report — Summary</h1>")
+    parts.append(
+        f"<p class='meta'>Generated: {doc.report_meta.generated_at.strftime('%d %b %Y')}"
+        f" &nbsp;•&nbsp; Assessment version: {esc(doc.report_meta.assessment_version)}"
+        f" &nbsp;•&nbsp; Locale: {esc(doc.report_meta.locale)}</p>"
+    )
+
+    for sec in doc.sections:
+        parts.append(f"<h2>{esc(sec.title)}</h2>")
+        for b in sec.blocks:
+            if b.kind == "career_card":
+                parts.append("<div class='card'>")
+                parts.append(
+                    "<div>"
+                    f"<span class='card-title'>{esc(b.career_title or '')}</span>"
+                    f" &nbsp;{_render_fit_stars_html(b.fit_band_key)}"
+                    + (f"<span class='band-label'>{esc(b.fit_band_label)}</span>" if b.fit_band_label else "")
+                    + "</div>"
+                )
+                if b.cluster_name:
+                    parts.append(f"<div class='cluster'>{esc(b.cluster_name)}</div>")
+                if b.description:
+                    parts.append(f"<div class='desc'>{esc(b.description)}</div>")
+                parts.append("</div>")
+            elif b.kind == "callout":
+                parts.append(f"<div class='callout'>{esc(b.text or b.explanation_text or '')}</div>")
+            elif b.kind == "paragraph":
+                css_class = " class='disclaimer'" if sec.type == "return_to_account" else ""
+                parts.append(f"<p{css_class}>{esc(b.text or b.explanation_text or '')}</p>")
+            elif b.kind in ("bullets", "career_list", "cluster_list"):
+                parts.append("<ul>")
+                for it in (b.items or []):
                     parts.append(f"<li>{esc(it)}</li>")
                 parts.append("</ul>")
 

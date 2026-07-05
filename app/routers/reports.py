@@ -16,7 +16,7 @@ Behavior:
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
@@ -32,11 +32,25 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 # Keep explicit to avoid accidental version drift.
 SUPPORTED_VERSIONS = {"v1"}
 
+
+def _resolve_student_tier(db: Session, student: models.Student) -> str:
+    """
+    Resolve free/paid for report purposes from the SAME source the session
+    endpoint exposes to the frontend: users.tier (default "free", paid users
+    carry "premium" — see auth session + admin simulator).
+    Returns "free" | "paid".
+    """
+    user = None
+    if student.user_id:
+        user = db.query(models.User).filter(models.User.id == student.user_id).first()
+    raw = str(getattr(user, "tier", "free") or "free").strip().lower()
+    return "paid" if raw in ("premium", "paid") else "free"
+
 @router.get("/scorecard/{student_id}")
 def get_scorecard_report(
     student_id: int,
     view: str = Query(default="student", description="student|counsellor|admin (role-enforced)"),
-    format: str = Query(default="json", description="json|html|pdf (pdf deferred)"),
+    format: str = Query(default="json", description="json|html|pdf (pdf = downloadable summary)"),
     locale: str = Query(default="en", description="Locale like en, kn-IN"),
     assessment_id: int | None = Query(default=None, description="Optional deterministic assessment snapshot"),
     db: Session = Depends(get_db),
@@ -46,7 +60,8 @@ def get_scorecard_report(
     PR18 — Canonical report endpoint (mobile + desktop compatible)
     - Deterministic snapshot: assessment_id optional, else latest
     - Projection-based views: student/counsellor/admin (server enforced)
-    - Formats: json + html now, pdf deferred (501)
+    - Formats: json + html (full on-screen doc), pdf (lightweight downloadable
+      summary — tier-aware, reduced section set, no deep detail)
     """
 
     # ---------------------------------------------------------
@@ -69,13 +84,6 @@ def get_scorecard_report(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported format: {format}",
-        )
-
-    # PDF is deferred in beta (deterministic behavior)
-    if format == "pdf":
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="PDF export is not available in beta. Use format=html.",
         )
 
     # ---------------------------------------------------------
@@ -109,7 +117,45 @@ def get_scorecard_report(
     # 4) Build canonical ReportDocument (student-safe guard inside builder)
     # ---------------------------------------------------------
     locale = report_builder.normalize_locale(locale)
-    
+
+    # Tier gates only the PDF download summary (5 vs 9 careers);
+    # variant="full" ignores it, keeping json/html output unchanged.
+    tier = _resolve_student_tier(db, student_obj)
+
+    # ---------------------------------------------------------
+    # 5) Format response
+    # ---------------------------------------------------------
+    if format == "pdf":
+        try:
+            from weasyprint import HTML as WeasyHTML
+        except Exception:
+            # System libs (Pango/HarfBuzz) or the package itself are missing —
+            # e.g. local dev outside the Docker image. Fail deterministically.
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="PDF rendering is not available on this server.",
+            )
+
+        doc = report_builder.build_report_document(
+            db,
+            student=student_obj,
+            assessment=assessment,
+            assessment_result=assessment_result,
+            view=enforced_view,
+            locale=locale,
+            tier=tier,
+            variant="download_summary",
+        )
+        pdf_html = report_builder.render_report_pdf_html(doc)
+        pdf_bytes = WeasyHTML(string=pdf_html).write_pdf()
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="career-report-{student_id}.pdf"'
+            },
+        )
+
     doc = report_builder.build_report_document(
         db,
         student=student_obj,
@@ -117,11 +163,9 @@ def get_scorecard_report(
         assessment_result=assessment_result,
         view=enforced_view,
         locale=locale,
+        tier=tier,
     )
 
-    # ---------------------------------------------------------
-    # 5) Format response
-    # ---------------------------------------------------------
     if format == "html":
         html = report_builder.render_report_html(doc)
         return HTMLResponse(content=html, status_code=200)
