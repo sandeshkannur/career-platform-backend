@@ -1027,6 +1027,7 @@ class ReportBlock(BaseModel):
         "callout",
         "career_list",
         "cluster_list",
+        "career_card",
     ]
     text: Optional[str] = None
     items: Optional[List[str]] = None
@@ -1034,6 +1035,13 @@ class ReportBlock(BaseModel):
     # CMS-backed explainability (PR16)
     explanation_key: Optional[str] = None
     explanation_text: Optional[str] = None
+
+    # PDF download summary (kind="career_card") — display-safe fields only
+    career_title: Optional[str] = None
+    fit_band_key: Optional[str] = None
+    fit_band_label: Optional[str] = None
+    description: Optional[str] = None
+    cluster_name: Optional[str] = None
 
 
 class ReportSection(BaseModel):
