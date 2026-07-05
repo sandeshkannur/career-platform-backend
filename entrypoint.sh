@@ -1,8 +1,8 @@
-#!/usr/bin/env sh
+﻿#!/usr/bin/env sh
 set -e
 
-echo "⏳ Waiting for Postgres to be ready…"
-# (we’re already in /app, wait_for_db.py lives at app/wait_for_db.py)
+echo "â³ Waiting for Postgres to be readyâ€¦"
+# (weâ€™re already in /app, wait_for_db.py lives at app/wait_for_db.py)
 python app/wait_for_db.py \
   --host     "$POSTGRES_HOST" \
   --port     "$POSTGRES_PORT" \
@@ -10,8 +10,8 @@ python app/wait_for_db.py \
   --password "$POSTGRES_PASSWORD" \
   --db       "$POSTGRES_DB"
 
-echo "🚀 Applying database migrations…"
+echo "ðŸš€ Applying database migrationsâ€¦"
 alembic upgrade head
 
-echo "✅ Migrations applied. Starting Uvicorn…"
+echo "âœ… Migrations applied. Starting Uvicornâ€¦"
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
