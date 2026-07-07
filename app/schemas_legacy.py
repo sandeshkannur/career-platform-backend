@@ -1042,6 +1042,9 @@ class ReportBlock(BaseModel):
     fit_band_label: Optional[str] = None
     description: Optional[str] = None
     cluster_name: Optional[str] = None
+    # Localized Indian job title (career_content.indian_job_title); only set
+    # for non-English locales so English output stays unchanged.
+    indian_job_title: Optional[str] = None
 
 
 class ReportSection(BaseModel):

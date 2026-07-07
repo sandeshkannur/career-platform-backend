@@ -434,6 +434,17 @@ class FacetTranslation(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class ClusterTranslation(Base):
+    __tablename__ = "cluster_translations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cluster_id = Column(Integer, ForeignKey("career_clusters.id", ondelete="CASCADE"), nullable=False, index=True)
+    locale = Column(String(20), ForeignKey("languages.code", ondelete="RESTRICT"), nullable=False, index=True)
+
+    name = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class ExplanationTranslation(Base):
     __tablename__ = "explanation_translations"
 
