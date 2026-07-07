@@ -27,38 +27,48 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # english career_clusters.name (short live name and/or long legacy alias) -> Kannada name
+#
+# Values are copied VERBATIM from the shipped frontend locale strings
+# (index bundle, home.clusters.* keys) so the PDF matches what students already
+# see on screen — including the "&" separator convention.
+#
+# NOTE (deliberate, 2026-07-07): "ಅತಿಥ್ಯ" (Hospitality) matches the frontend's
+# existing spelling even though the standard Kannada spelling is "ಆತಿಥ್ಯ".
+# Consistency with the live UI was chosen over correctness here; reconcile the
+# spelling platform-wide (frontend + this seed) in a future content pass.
 _KN_CLUSTER_NAMES = {
     # live short names (career_clusters.name in production)
-    "Agriculture": "ಕೃಷಿ",
-    "Architecture": "ವಾಸ್ತುಶಿಲ್ಪ",
-    "Arts & A/V": "ಕಲೆ ಮತ್ತು ಮಾಧ್ಯಮ",
-    "Business": "ವ್ಯವಹಾರ",
-    "Education": "ಶಿಕ್ಷಣ",
+    "Agriculture": "ಕೃಷಿ & ನೈಸರ್ಗಿಕ ಸಂಪನ್ಮೂಲಗಳು",
+    "Architecture": "ವಾಸ್ತುಶಿಲ್ಪ & ನಿರ್ಮಾಣ",
+    "Arts & A/V": "ಕಲೆ & ಸಂವಹನ",
+    "Business": "ವ್ಯವಹಾರ & ಆಡಳಿತ",
+    "Education": "ಶಿಕ್ಷಣ & ತರಬೇತಿ",
     "Finance": "ಹಣಕಾಸು",
-    "Government": "ಸರ್ಕಾರಿ ಸೇವೆ",
+    "Government": "ಸರ್ಕಾರ & ಸಾರ್ವಜನಿಕ ಆಡಳಿತ",
     "Health Sci": "ಆರೋಗ್ಯ ವಿಜ್ಞಾನ",
-    "Hospitality": "ಆತಿಥ್ಯ",
+    "Hospitality": "ಅತಿಥ್ಯ & ಪ್ರವಾಸೋದ್ಯಮ",
     "Human Serv": "ಮಾನವ ಸೇವೆಗಳು",
     "Info Tech": "ಮಾಹಿತಿ ತಂತ್ರಜ್ಞಾನ",
-    "Law/Safety": "ಕಾನೂನು ಮತ್ತು ಸುರಕ್ಷತೆ",
+    "Law/Safety": "ಕಾನೂನು & ಸಾರ್ವಜನಿಕ ಸುರಕ್ಷತೆ",
     "Manufacturing": "ಉತ್ಪಾದನೆ",
-    "Marketing": "ಮಾರಾಟ ಮತ್ತು ಮಾರ್ಕೆಟಿಂಗ್",
-    "STEM": "ವಿಜ್ಞಾನ ಮತ್ತು ತಂತ್ರಜ್ಞಾನ (STEM)",
-    # long-form aliases (CCluster_kn_details.xlsx / classic CTE cluster names)
-    "Agriculture, Food & Natural Resources": "ಕೃಷಿ, ಆಹಾರ ಮತ್ತು ನೈಸರ್ಗಿಕ ಸಂಪನ್ಮೂಲಗಳು",
-    "Architecture & Construction": "ವಾಸ್ತುಶಿಲ್ಪ ಮತ್ತು ನಿರ್ಮಾಣ",
-    "Arts, A/V Technology & Communications": "ಕಲೆ, ದೃಶ್ಯ-ಶ್ರವಣ ತಂತ್ರಜ್ಞಾನ ಮತ್ತು ಸಂವಹನ",
-    "Business, Management & Administration": "ವ್ಯವಹಾರ, ನಿರ್ವಹಣೆ ಮತ್ತು ಆಡಳಿತ",
-    "Education & Training": "ಶಿಕ್ಷಣ ಮತ್ತು ತರಬೇತಿ",
-    "Government & Public Administration": "ಸರ್ಕಾರ ಮತ್ತು ಸಾರ್ವಜನಿಕ ಆಡಳಿತ",
+    "Marketing": "ಮಾರ್ಕೆಟಿಂಗ್ & ಮಾರಾಟ",
+    "STEM": "STEM",
+    # long-form aliases (CCluster_kn_details.xlsx / classic CTE cluster names) —
+    # same frontend values, keyed by the legacy long English names
+    "Agriculture, Food & Natural Resources": "ಕೃಷಿ & ನೈಸರ್ಗಿಕ ಸಂಪನ್ಮೂಲಗಳು",
+    "Architecture & Construction": "ವಾಸ್ತುಶಿಲ್ಪ & ನಿರ್ಮಾಣ",
+    "Arts, A/V Technology & Communications": "ಕಲೆ & ಸಂವಹನ",
+    "Business, Management & Administration": "ವ್ಯವಹಾರ & ಆಡಳಿತ",
+    "Education & Training": "ಶಿಕ್ಷಣ & ತರಬೇತಿ",
+    "Government & Public Administration": "ಸರ್ಕಾರ & ಸಾರ್ವಜನಿಕ ಆಡಳಿತ",
     "Health Science": "ಆರೋಗ್ಯ ವಿಜ್ಞಾನ",
-    "Hospitality & Tourism": "ಆತಿಥ್ಯ ಮತ್ತು ಪ್ರವಾಸೋದ್ಯಮ",
+    "Hospitality & Tourism": "ಅತಿಥ್ಯ & ಪ್ರವಾಸೋದ್ಯಮ",
     "Human Services": "ಮಾನವ ಸೇವೆಗಳು",
     "Information Technology": "ಮಾಹಿತಿ ತಂತ್ರಜ್ಞಾನ",
-    "Law, Public Safety, Corrections & Security": "ಕಾನೂನು, ಸಾರ್ವಜನಿಕ ಸುರಕ್ಷತೆ ಮತ್ತು ಭದ್ರತೆ",
-    "Marketing, Sales & Service": "ಮಾರಾಟ, ವಿಪಣನ ಮತ್ತು ಸೇವೆ",
-    "Science, Technology, Engineering & Mathematics (STEM)": "ವಿಜ್ಞಾನ, ತಂತ್ರಜ್ಞಾನ, ಇಂಜಿನಿಯರಿಂಗ್ ಮತ್ತು ಗಣಿತ (STEM)",
-    "Transportation, Distribution & Logistics": "ಸಾರಿಗೆ, ವಿತರಣೆ ಮತ್ತು ಲಾಜಿಸ್ಟಿಕ್ಸ್",
+    "Law, Public Safety, Corrections & Security": "ಕಾನೂನು & ಸಾರ್ವಜನಿಕ ಸುರಕ್ಷತೆ",
+    "Marketing, Sales & Service": "ಮಾರ್ಕೆಟಿಂಗ್ & ಮಾರಾಟ",
+    "Science, Technology, Engineering & Mathematics (STEM)": "STEM",
+    "Transportation, Distribution & Logistics": "ಸಾರಿಗೆ & ಲಾಜಿಸ್ಟಿಕ್ಸ್",
 }
 
 

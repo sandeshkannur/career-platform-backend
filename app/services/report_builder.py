@@ -682,24 +682,29 @@ _PDF_UI_STRINGS: Dict[str, Dict[str, str]] = {
             "and does not constitute professional career counselling advice."
         ),
     },
+    # Kannada strings follow the shipped frontend conventions where a precedent
+    # exists (home.clusters.*, Results-page labels, login-button phrasing).
     "kn-IN": {
         "summary_title": "ನಿಮ್ಮ ವೃತ್ತಿ ಹೊಂದಾಣಿಕೆಯ ಸಾರಾಂಶ",
         "summary_body": "ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಮೌಲ್ಯಮಾಪನದ ಆಧಾರದ ಮೇಲೆ ನಿಮಗೆ ಹೆಚ್ಚು ಹೊಂದುವ ಕ್ಷೇತ್ರಗಳು ಇಲ್ಲಿವೆ.",
         "careers_title": "ಉನ್ನತ ವೃತ್ತಿ ಆಯ್ಕೆಗಳು",
-        "cluster_signals_title": "ವೃತ್ತಿ ಕ್ಷೇತ್ರ ಸೂಚಕಗಳು",
+        # exact Results-page label from the frontend bundle
+        "cluster_signals_title": "ಕ್ಲಸ್ಟರ್ ಸಂಕೇತಗಳು",
         "cluster_signal_item_singular": "{name} — {count} ವೃತ್ತಿ",
         "cluster_signal_item_plural": "{name} — {count} ವೃತ್ತಿಗಳು",
         "closing_title": "ನಿಮ್ಮ ಪೂರ್ಣ ಫಲಿತಾಂಶಗಳನ್ನು ನೋಡಿ",
         "closing_callout": (
             "ನಿಮ್ಮ ಪೂರ್ಣ ಫಲಿತಾಂಶಗಳನ್ನು — ವೃತ್ತಿ ಮಾರ್ಗಗಳು, ವೇತನ ಶ್ರೇಣಿಗಳು, ಪ್ರೀಮಿಯಂ "
-            "ಒಳನೋಟಗಳು ಮತ್ತು ಮಾರ್ಗದರ್ಶಿತ ಮುಂದಿನ ಹೆಜ್ಜೆಗಳನ್ನು — ನೋಡಲು ವೆಬ್ ಅಥವಾ "
-            "ಮೊಬೈಲ್ ಆ್ಯಪ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಖಾತೆಗೆ ಲಾಗಿನ್ ಆಗಿ."
+            "ಒಳನೋಟಗಳು ಮತ್ತು ಮಾರ್ಗದರ್ಶಿ ಮುಂದಿನ ಹೆಜ್ಜೆಗಳನ್ನು — ನೋಡಲು ವೆಬ್ ಅಥವಾ "
+            "ಮೊಬೈಲ್ ಆ್ಯಪ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಖಾತೆಗೆ ಲಾಗಿನ್ ಮಾಡಿ."
         ),
+        # Deliberately plain/literal (no idiom) so a native speaker can verify it
+        # quickly — there is no existing platform disclaimer to align to.
         "closing_disclaimer": (
-            "ಈ ದಾಖಲೆಯು ಸಾರಾಂಶ ರೂಪದ ಚಿತ್ರಣ ಮಾತ್ರ; ಸಂಪೂರ್ಣ ದಾಖಲೆ ಅಲ್ಲ. ಪೂರ್ಣ "
-            "ಮೌಲ್ಯಮಾಪನ ವಿಧಾನ ಮತ್ತು ನಿಮ್ಮ ವಿವರವಾದ ಫಲಿತಾಂಶಗಳು ನಿಮ್ಮ ಖಾತೆಯಲ್ಲಿ ಮಾತ್ರ "
-            "ಲಭ್ಯವಿವೆ. ಇದು ವೈಯಕ್ತಿಕ ಮತ್ತು ಶೈಕ್ಷಣಿಕ ಉಲ್ಲೇಖಕ್ಕಾಗಿ ಮಾತ್ರ "
-            "ಉದ್ದೇಶಿಸಲಾಗಿದ್ದು, ವೃತ್ತಿಪರ ವೃತ್ತಿ ಮಾರ್ಗದರ್ಶನ ಸಲಹೆಯಾಗಿ ಪರಿಗಣಿಸಬಾರದು."
+            "ಇದು ಸಾರಾಂಶ ಮಾತ್ರ; ಸಂಪೂರ್ಣ ದಾಖಲೆ ಅಲ್ಲ. ಪೂರ್ಣ ಮೌಲ್ಯಮಾಪನ ವಿಧಾನ ಮತ್ತು "
+            "ನಿಮ್ಮ ವಿವರವಾದ ಫಲಿತಾಂಶಗಳು ನಿಮ್ಮ ಖಾತೆಯಲ್ಲಿ ಮಾತ್ರ ಲಭ್ಯವಿವೆ. ಈ ದಾಖಲೆ "
+            "ವೈಯಕ್ತಿಕ ಮತ್ತು ಶೈಕ್ಷಣಿಕ ಬಳಕೆಗೆ ಮಾತ್ರ; ಇದು ವೃತ್ತಿಪರ ವೃತ್ತಿ ಮಾರ್ಗದರ್ಶನ "
+            "ಸಲಹೆ ಅಲ್ಲ."
         ),
     },
 }
