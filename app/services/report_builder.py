@@ -286,6 +286,9 @@ def extract_career_entries_from_recommended_careers(rc: Any) -> list[dict]:
     Structured (allowlist-only) extraction for the PDF download summary.
     Each entry carries ONLY display-safe fields:
       title, fit_band_key, description, cluster
+    plus career_id — an internal join key for locale-aware content re-resolution
+    (never rendered; the snapshot stores it because project_student_safe
+    allowlists it).
     Everything else in the stored payload (salary, pathways, matched_keyskills,
     automation risk, future outlook, explainability, …) is dropped by construction.
     """
@@ -306,7 +309,7 @@ def extract_career_entries_from_recommended_careers(rc: Any) -> list[dict]:
             title = _normalize_text(item)
             if title and title not in seen_titles:
                 seen_titles.add(title)
-                entries.append({"title": title, "fit_band_key": None, "description": None, "cluster": None})
+                entries.append({"title": title, "fit_band_key": None, "description": None, "cluster": None, "career_id": None})
             continue
 
         if not isinstance(item, dict):
@@ -334,12 +337,16 @@ def extract_career_entries_from_recommended_careers(rc: Any) -> list[dict]:
 
             cluster = _extract_first_str(item, _ALLOWED_CLUSTER_NAME_KEYS)
 
+            career_id = item.get("career_id")
+            career_id = career_id if isinstance(career_id, int) else None
+
             entries.append(
                 {
                     "title": title,
                     "fit_band_key": band_key,
                     "description": description,
                     "cluster": cluster,
+                    "career_id": career_id,
                 }
             )
 
@@ -408,13 +415,36 @@ def build_report_document(
 
     # --- Download-summary variant (PDF): reduced, deliberately lightweight ---
     if variant == "download_summary":
+        ui = _get_pdf_ui_strings(locale)
+        content_lang = locale_to_content_lang(locale)
+
+        # 1) Summary section — same structure, locale-aware copy
+        #    (for "en" these strings are identical to the section appended above)
+        sections[0] = schemas.ReportSection(
+            type="summary",
+            title=ui["summary_title"],
+            blocks=[schemas.ReportBlock(kind="paragraph", text=ui["summary_body"])],
+        )
+
         entries = extract_career_entries_from_recommended_careers(
             assessment_result.recommended_careers or []
         )
         max_careers = _DOWNLOAD_SUMMARY_CAREER_LIMITS.get(tier, _DOWNLOAD_SUMMARY_CAREER_LIMITS["free"])
         entries = entries[:max_careers]
 
+        # The snapshot is always English (computed with lang="en" at submit time),
+        # so non-English locales re-resolve description / indian_job_title from
+        # career_content and cluster names from cluster_translations here.
+        if content_lang != "en":
+            _localize_career_entries(db, entries, content_lang)
+            cluster_names = {e["cluster"] for e in entries if e.get("cluster")}
+            translated_clusters = _get_cluster_name_translations(db, cluster_names, content_lang)
+            for e in entries:
+                if e.get("cluster"):
+                    e["cluster"] = translated_clusters.get(e["cluster"], e["cluster"])
+
         # 2) Careers — title + fit band + short description + cluster ONLY
+        #    (career title stays English by design, product-wide behavior)
         career_blocks: List[schemas.ReportBlock] = []
         for e in entries:
             career_blocks.append(
@@ -425,13 +455,14 @@ def build_report_document(
                     fit_band_label=resolve_fit_band_label(db, e["fit_band_key"]),
                     description=e["description"],
                     cluster_name=e["cluster"],
+                    indian_job_title=e.get("indian_job_title"),
                 )
             )
         if career_blocks:
             sections.append(
                 schemas.ReportSection(
                     type="careers",
-                    title="Top Career Options",
+                    title=ui["careers_title"],
                     blocks=career_blocks,
                 )
             )
@@ -443,13 +474,15 @@ def build_report_document(
                 cluster_counts[e["cluster"]] = cluster_counts.get(e["cluster"], 0) + 1
         if cluster_counts:
             signal_items = [
-                f"{name} — {count} career" + ("s" if count != 1 else "")
+                (
+                    ui["cluster_signal_item_singular"] if count == 1 else ui["cluster_signal_item_plural"]
+                ).format(name=name, count=count)
                 for name, count in cluster_counts.items()
             ]
             sections.append(
                 schemas.ReportSection(
                     type="cluster_signals",
-                    title="Cluster Signals",
+                    title=ui["cluster_signals_title"],
                     blocks=[schemas.ReportBlock(kind="bullets", items=signal_items)],
                 )
             )
@@ -458,25 +491,10 @@ def build_report_document(
         sections.append(
             schemas.ReportSection(
                 type="return_to_account",
-                title="See Your Full Results",
+                title=ui["closing_title"],
                 blocks=[
-                    schemas.ReportBlock(
-                        kind="callout",
-                        text=(
-                            "Log in to your account on the web or mobile app to explore your "
-                            "full results — career pathways, salary ranges, premium insights, "
-                            "and guided next steps."
-                        ),
-                    ),
-                    schemas.ReportBlock(
-                        kind="paragraph",
-                        text=(
-                            "This document is a summary snapshot, not a complete record. The full "
-                            "assessment methodology and your detailed results are available only in "
-                            "your account. It is intended for personal and educational reference only "
-                            "and does not constitute professional career counselling advice."
-                        ),
-                    ),
+                    schemas.ReportBlock(kind="callout", text=ui["closing_callout"]),
+                    schemas.ReportBlock(kind="paragraph", text=ui["closing_disclaimer"]),
                 ],
             )
         )
@@ -618,6 +636,141 @@ def normalize_locale(locale: str) -> str:
 
     # keep as-is for other locales (future-proof)
     return loc
+
+
+# Report locales are BCP-47-ish ("kn-IN"), but career_content / cluster_translations
+# rows are keyed by short lang codes matching languages.code ("kn").
+_CONTENT_LANG_BY_LOCALE = {
+    "en": "en",
+    "kn-IN": "kn",
+}
+
+
+def locale_to_content_lang(locale: str) -> str:
+    """
+    Map a normalized report locale to the lang code used by content tables
+    (career_content.lang, cluster_translations.locale). Unknown locales fall
+    back to their primary subtag so future languages keep working ("ta-IN" -> "ta").
+    """
+    loc = normalize_locale(locale)
+    if loc in _CONTENT_LANG_BY_LOCALE:
+        return _CONTENT_LANG_BY_LOCALE[loc]
+    return loc.split("-", 1)[0].lower() or "en"
+
+
+# Static UI strings for the download_summary PDF, keyed by normalized locale.
+# The "en" values MUST stay byte-identical to the historical hardcoded strings.
+# {name}/{count} placeholders are filled via str.format.
+_PDF_UI_STRINGS: Dict[str, Dict[str, str]] = {
+    "en": {
+        "summary_title": "Your Career Fit Summary",
+        "summary_body": "Here are your top matching areas based on your latest assessment.",
+        "careers_title": "Top Career Options",
+        "cluster_signals_title": "Cluster Signals",
+        "cluster_signal_item_singular": "{name} — {count} career",
+        "cluster_signal_item_plural": "{name} — {count} careers",
+        "closing_title": "See Your Full Results",
+        "closing_callout": (
+            "Log in to your account on the web or mobile app to explore your "
+            "full results — career pathways, salary ranges, premium insights, "
+            "and guided next steps."
+        ),
+        "closing_disclaimer": (
+            "This document is a summary snapshot, not a complete record. The full "
+            "assessment methodology and your detailed results are available only in "
+            "your account. It is intended for personal and educational reference only "
+            "and does not constitute professional career counselling advice."
+        ),
+    },
+    # Kannada strings follow the shipped frontend conventions where a precedent
+    # exists (home.clusters.*, Results-page labels, login-button phrasing).
+    "kn-IN": {
+        "summary_title": "ನಿಮ್ಮ ವೃತ್ತಿ ಹೊಂದಾಣಿಕೆಯ ಸಾರಾಂಶ",
+        "summary_body": "ನಿಮ್ಮ ಇತ್ತೀಚಿನ ಮೌಲ್ಯಮಾಪನದ ಆಧಾರದ ಮೇಲೆ ನಿಮಗೆ ಹೆಚ್ಚು ಹೊಂದುವ ಕ್ಷೇತ್ರಗಳು ಇಲ್ಲಿವೆ.",
+        "careers_title": "ಉನ್ನತ ವೃತ್ತಿ ಆಯ್ಕೆಗಳು",
+        # exact Results-page label from the frontend bundle
+        "cluster_signals_title": "ಕ್ಲಸ್ಟರ್ ಸಂಕೇತಗಳು",
+        "cluster_signal_item_singular": "{name} — {count} ವೃತ್ತಿ",
+        "cluster_signal_item_plural": "{name} — {count} ವೃತ್ತಿಗಳು",
+        "closing_title": "ನಿಮ್ಮ ಪೂರ್ಣ ಫಲಿತಾಂಶಗಳನ್ನು ನೋಡಿ",
+        "closing_callout": (
+            "ನಿಮ್ಮ ಪೂರ್ಣ ಫಲಿತಾಂಶಗಳನ್ನು — ವೃತ್ತಿ ಮಾರ್ಗಗಳು, ವೇತನ ಶ್ರೇಣಿಗಳು, ಪ್ರೀಮಿಯಂ "
+            "ಒಳನೋಟಗಳು ಮತ್ತು ಮಾರ್ಗದರ್ಶಿ ಮುಂದಿನ ಹೆಜ್ಜೆಗಳನ್ನು — ನೋಡಲು ವೆಬ್ ಅಥವಾ "
+            "ಮೊಬೈಲ್ ಆ್ಯಪ್‌ನಲ್ಲಿ ನಿಮ್ಮ ಖಾತೆಗೆ ಲಾಗಿನ್ ಮಾಡಿ."
+        ),
+        # Deliberately plain/literal (no idiom) so a native speaker can verify it
+        # quickly — there is no existing platform disclaimer to align to.
+        "closing_disclaimer": (
+            "ಇದು ಸಾರಾಂಶ ಮಾತ್ರ; ಸಂಪೂರ್ಣ ದಾಖಲೆ ಅಲ್ಲ. ಪೂರ್ಣ ಮೌಲ್ಯಮಾಪನ ವಿಧಾನ ಮತ್ತು "
+            "ನಿಮ್ಮ ವಿವರವಾದ ಫಲಿತಾಂಶಗಳು ನಿಮ್ಮ ಖಾತೆಯಲ್ಲಿ ಮಾತ್ರ ಲಭ್ಯವಿವೆ. ಈ ದಾಖಲೆ "
+            "ವೈಯಕ್ತಿಕ ಮತ್ತು ಶೈಕ್ಷಣಿಕ ಬಳಕೆಗೆ ಮಾತ್ರ; ಇದು ವೃತ್ತಿಪರ ವೃತ್ತಿ ಮಾರ್ಗದರ್ಶನ "
+            "ಸಲಹೆ ಅಲ್ಲ."
+        ),
+    },
+}
+
+
+def _get_pdf_ui_strings(locale: str) -> Dict[str, str]:
+    """Resolve the download-summary UI string set; English is the hard fallback."""
+    resolved = dict(_PDF_UI_STRINGS["en"])
+    resolved.update(_PDF_UI_STRINGS.get(normalize_locale(locale), {}))
+    return resolved
+
+
+def _localize_career_entries(db: Session, entries: list[dict], content_lang: str) -> None:
+    """
+    Re-resolve career content in the requested language at render time.
+
+    The recommended_careers snapshot is always computed with lang="en" at submit
+    time, so localized description / indian_job_title must come from
+    career_content here. Reuses career_engine._get_content (the same resolution
+    the recommendations endpoint uses) — entries without a kn row keep their
+    English snapshot text (per-career fallback).
+    """
+    from app.services.career_engine import _get_content
+    from app.projections.student_safe import _strip_numbers_from_text
+
+    career_ids = [e["career_id"] for e in entries if e.get("career_id")]
+    if not career_ids:
+        return
+
+    content_by_career = _get_content(db, career_ids, content_lang)
+
+    for e in entries:
+        content = content_by_career.get(e.get("career_id"))
+        if not content or content.get("lang_used") != content_lang:
+            continue
+
+        description = content.get("description")
+        if isinstance(description, str) and description.strip():
+            e["description"] = _shorten(_strip_numbers_from_text(description))
+
+        indian_job_title = content.get("indian_job_title")
+        if isinstance(indian_job_title, str) and indian_job_title.strip():
+            e["indian_job_title"] = _normalize_text(_strip_numbers_from_text(indian_job_title))
+
+
+def _get_cluster_name_translations(db: Session, names: set[str], content_lang: str) -> Dict[str, str]:
+    """
+    English cluster name -> translated name via cluster_translations.
+    Keyed by name because the snapshot stores cluster display names, not ids.
+    Missing translations simply keep the English name.
+    """
+    if not names or content_lang == "en":
+        return {}
+    try:
+        rows = (
+            db.query(models.CareerCluster.name, models.ClusterTranslation.name)
+            .join(models.ClusterTranslation, models.ClusterTranslation.cluster_id == models.CareerCluster.id)
+            .filter(models.ClusterTranslation.locale == content_lang)
+            .filter(models.CareerCluster.name.in_(list(names)))
+            .all()
+        )
+    except Exception:
+        return {}  # table may be absent in minimal environments; fall back to English
+    return {en: tr for en, tr in rows if isinstance(tr, str) and tr.strip()}
+
+
 def _assert_student_safe(doc: schemas.ReportDocument) -> None:
     """
     Regression tripwire:
@@ -660,6 +813,8 @@ def _assert_student_safe(doc: schemas.ReportDocument) -> None:
             # career_card fields (PDF download summary)
             if b.career_title:
                 check_text(f"section[{si}].block[{bi}].career_title", b.career_title)
+            if b.indian_job_title:
+                check_text(f"section[{si}].block[{bi}].indian_job_title", b.indian_job_title)
             if b.fit_band_label:
                 check_text(f"section[{si}].block[{bi}].fit_band_label", b.fit_band_label)
             if b.description:
@@ -792,6 +947,7 @@ def render_report_pdf_html(doc: schemas.ReportDocument) -> str:
         "padding: 9px 12px; margin: 0 0 8px 0; background: #ffffff; page-break-inside: avoid; }"
         ".card-title { font-weight: bold; font-size: 12.5px; color: #111521; }"
         ".band-label { color: #2540D9; font-size: 10.5px; font-weight: bold; margin-left: 6px; }"
+        ".job-title { font-size: 10.5px; opacity: 0.85; margin-top: 1px; }"
         ".cluster { opacity: 0.7; font-size: 10px; margin-top: 1px; }"
         ".desc { margin-top: 4px; }"
         ".callout { border-left: 3px solid #2540D9; background: rgba(37,64,217,0.06); "
@@ -821,6 +977,8 @@ def render_report_pdf_html(doc: schemas.ReportDocument) -> str:
                     + (f"<span class='band-label'>{esc(b.fit_band_label)}</span>" if b.fit_band_label else "")
                     + "</div>"
                 )
+                if b.indian_job_title:
+                    parts.append(f"<div class='job-title'>{esc(b.indian_job_title)}</div>")
                 if b.cluster_name:
                     parts.append(f"<div class='cluster'>{esc(b.cluster_name)}</div>")
                 if b.description:
