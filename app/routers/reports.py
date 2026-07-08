@@ -13,6 +13,7 @@ Behavior:
 - Version-aware: default v1, rejects unsupported versions
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -28,9 +29,47 @@ from app.services import report_builder
 from app.projections.student_safe import project_student_safe
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
+logger = logging.getLogger(__name__)
 
 # Keep explicit to avoid accidental version drift.
 SUPPORTED_VERSIONS = {"v1"}
+
+
+def _log_report_download(
+    db: Session,
+    *,
+    student_id: int,
+    assessment_id: int | None,
+    format: str,
+    locale: str,
+    tier: str,
+) -> None:
+    """
+    Append one report_downloads row (download analytics).
+
+    Never raises — a logging failure must NOT break the download itself.
+    Commits its own row; the scorecard handler is otherwise read-only.
+    """
+    try:
+        db.add(
+            models.ReportDownload(
+                student_id=student_id,
+                assessment_id=assessment_id,
+                format=format,
+                locale=locale,
+                tier=tier,
+            )
+        )
+        db.commit()
+    except Exception as exc:
+        logger.warning(
+            "report download log failed (student_id=%s assessment_id=%s format=%s): %s",
+            student_id, assessment_id, format, exc,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 def _resolve_student_tier(db: Session, student: models.Student) -> str:
@@ -148,6 +187,14 @@ def get_scorecard_report(
         )
         pdf_html = report_builder.render_report_pdf_html(doc)
         pdf_bytes = WeasyHTML(string=pdf_html).write_pdf()
+        _log_report_download(
+            db,
+            student_id=student_id,
+            assessment_id=assessment.id,
+            format="pdf",
+            locale=locale,
+            tier=tier,
+        )
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -171,7 +218,7 @@ def get_scorecard_report(
         return HTMLResponse(content=html, status_code=200)
 
     # format == "json"
-    return schemas.ReportResponse(
+    response = schemas.ReportResponse(
         student_id=student_id,
         scoring_config_version=assessment.scoring_config_version,  # keep existing field meaning: config version
         report_ready=True,
@@ -181,6 +228,15 @@ def get_scorecard_report(
         message="Report generated",
         report_payload=project_student_safe(doc.model_dump()) if enforced_view == "student" else doc.model_dump(),
     )
+    _log_report_download(
+        db,
+        student_id=student_id,
+        assessment_id=assessment.id,
+        format="json",
+        locale=locale,
+        tier=tier,
+    )
+    return response
 
 @router.get("/{student_id}", response_model=schemas.ReportResponse)
 def get_student_report(
