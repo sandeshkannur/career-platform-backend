@@ -83,6 +83,20 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
         return None
     return user
 
+
+def _ensure_account_active(user: models.User) -> None:
+    """
+    Reject deactivated accounts (users.is_active=false — admin soft delete).
+    Called at every token-issuing endpoint (login/refresh/OTP) AND on every
+    authenticated request via get_current_active_user, so an existing valid
+    token stops working as soon as the account is deactivated.
+    """
+    if not getattr(user, "is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated",
+        )
+
 def ensure_student_profile(db: Session, user: models.User) -> Optional[models.Student]:
     if user.role != "student":
         return None
@@ -190,6 +204,7 @@ async def get_current_user(
 def get_current_active_user(
     current_user: models.User = Depends(get_current_user),
 ) -> models.User:
+    _ensure_account_active(current_user)
     return current_user
 
 
@@ -288,7 +303,12 @@ def signup(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
             is_minor=is_minor,
             guardian_email=user_in.guardian_email,
             phone_number=(user_in.phone_number or "").strip() or None,
-            role=user_in.role,
+            # SECURITY: public signup always creates students. The client-supplied
+            # UserCreate.role is deliberately ignored here — honoring it allowed
+            # self-assigned role="admin"/"counsellor". Privileged accounts are
+            # created only via admin endpoints (e.g. /v1/admin/counsellors,
+            # /v1/admin/change-role/{user_id}).
+            role="student",
         )
         db.add(new_user)
         db.flush()  # gets new_user.id without committing yet
@@ -340,6 +360,7 @@ def login_json(
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    _ensure_account_active(user)
 
     # ✅ Access token (short-lived)
     access_token = create_access_token(
@@ -395,6 +416,7 @@ def login(
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    _ensure_account_active(user)
 
     access_token = create_access_token(
         data={
@@ -465,6 +487,7 @@ def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
+    _ensure_account_active(user)
 
     new_access_token = create_access_token(
         data={
@@ -683,6 +706,7 @@ def verify_login_otp(
     user = db.query(models.User).filter(models.User.phone_number == phone).first()
     if not user:
         raise HTTPException(status_code=404, detail="Account not found")
+    _ensure_account_active(user)
 
     if not is_beta_email_allowed(user.email):
         raise HTTPException(status_code=403, detail="Beta access restricted.")
