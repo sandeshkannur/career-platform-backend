@@ -41,3 +41,6 @@ data/
 .claude/*
 
 !.claude/settings.json
+
+login.json
+scripts/calibration/
