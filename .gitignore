@@ -31,6 +31,7 @@ Snapshot/
 
 # Temporary diagnostic scripts (never commit)
 tmp_*.py
+scripts/output/
 export_v1_seedpack.py
 make_qft_upload_ready.py
 *.csv
@@ -40,3 +41,6 @@ data/
 .claude/*
 
 !.claude/settings.json
+
+login.json
+scripts/calibration/
