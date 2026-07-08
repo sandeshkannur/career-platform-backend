@@ -74,6 +74,10 @@ class User(Base):
     phone_number = Column(String(20), unique=True, nullable=True, index=True)
     role = Column(String, nullable=False, default="student")
     subscription_tier = Column(String(20), nullable=True, default="free")
+    # Soft-delete/deactivation flag (admin-managed; used by counsellor
+    # management first). NOTE: login/token validation does not enforce this
+    # yet — get_current_active_user is a pass-through today.
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
 
 
 class Student(Base):

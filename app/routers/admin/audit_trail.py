@@ -47,6 +47,7 @@ VALID_ENTITY_TYPES = {
     "fit_band", "cps_factor", "aq",
     "weight_change_request",
     "weight_snapshot",
+    "counsellor",
 }
 
 
