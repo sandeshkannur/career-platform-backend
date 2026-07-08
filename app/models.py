@@ -1455,6 +1455,29 @@ class InterestInventoryResponse(Base):
     student = relationship('Student', backref='interest_responses')
 
 
+class ReportDownload(Base):
+    """
+    ReportDownload — append-only log of successful report downloads from the
+    scorecard endpoint (format=pdf|json only; html previews are not downloads).
+
+    tier is stamped at download time for historical accuracy even if the
+    student's tier changes later. assessment_id is nullable defensively —
+    a download event must still be recordable if source resolution ever
+    returns without a pinned assessment.
+    """
+    __tablename__ = "report_downloads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_id = Column(Integer, ForeignKey("assessments.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    format = Column(String(10), nullable=False)   # "pdf" | "json"
+    locale = Column(String(20), nullable=False)
+    tier = Column(String(10), nullable=False)     # "free" | "paid" (as served)
+
+    downloaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
 class CareerFeatureVector(Base):
     """
     Per-career feature vectors for similarity search and intelligence.
