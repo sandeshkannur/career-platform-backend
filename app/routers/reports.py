@@ -44,9 +44,14 @@ def _log_report_download(
     format: str,
     locale: str,
     tier: str,
+    downloaded_by: models.User | None = None,
 ) -> None:
     """
     Append one report_downloads row (download analytics).
+
+    downloaded_by stamps attribution (user id + role) at write time —
+    the requesting user, which for counsellor/admin downloads is NOT the
+    student the report belongs to.
 
     Never raises — a logging failure must NOT break the download itself.
     Commits its own row; the scorecard handler is otherwise read-only.
@@ -59,6 +64,8 @@ def _log_report_download(
                 format=format,
                 locale=locale,
                 tier=tier,
+                downloaded_by_user_id=getattr(downloaded_by, "id", None),
+                downloaded_by_role=getattr(downloaded_by, "role", None),
             )
         )
         db.commit()
@@ -200,6 +207,7 @@ def get_scorecard_report(
             format="pdf",
             locale=locale,
             tier=tier,
+            downloaded_by=current_user,
         )
         return Response(
             content=pdf_bytes,
@@ -241,6 +249,7 @@ def get_scorecard_report(
         format="json",
         locale=locale,
         tier=tier,
+        downloaded_by=current_user,
     )
     return response
 

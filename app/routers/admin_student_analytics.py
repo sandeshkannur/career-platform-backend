@@ -523,6 +523,9 @@ def get_student_report_downloads(
             "format":                  dl.format,
             "locale":                  dl.locale,
             "tier":                    dl.tier,
+            # Attribution (nullable: rows predating the attribution columns)
+            "downloaded_by_user_id":   dl.downloaded_by_user_id,
+            "downloaded_by_role":      dl.downloaded_by_role,
             "downloaded_at":           dl.downloaded_at.isoformat() if dl.downloaded_at else None,
         }
         for dl, assessment_submitted_at in rows

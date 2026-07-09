@@ -29,6 +29,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
@@ -79,6 +80,29 @@ class CounsellorListOut(BaseModel):
     limit: int
     offset: int
     counsellors: list[CounsellorOut]
+
+
+class DownloadActivityPerStudent(BaseModel):
+    student_id: int
+    student_name: Optional[str]
+    downloads: int
+    last_downloaded_at: Optional[datetime]
+
+
+class DownloadActivitySummary(BaseModel):
+    total_downloads: int
+    distinct_students: int
+    first_downloaded_at: Optional[datetime]
+    last_downloaded_at: Optional[datetime]
+
+
+class DownloadActivityOut(BaseModel):
+    counsellor_id: int
+    counsellor_email: EmailStr
+    from_date: Optional[datetime]
+    to_date: Optional[datetime]
+    summary: DownloadActivitySummary
+    per_student: list[DownloadActivityPerStudent]
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +222,81 @@ def get_counsellor(
     # exist yet (feat/counsellor-assignments-phase1 unmerged). Add the join
     # here once that table lands.
     return _get_counsellor_or_404(db, counsellor_id)
+
+
+@router.get(
+    "/counsellors/{counsellor_id}/download-activity",
+    response_model=DownloadActivityOut,
+    summary="Report-download activity by a counsellor across all students (admin)",
+)
+def counsellor_download_activity(
+    counsellor_id: int,
+    from_date: Optional[datetime] = Query(None, description="Only downloads at or after this timestamp (ISO 8601)"),
+    to_date: Optional[datetime] = Query(None, description="Only downloads at or before this timestamp (ISO 8601)"),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_role("admin")),
+):
+    """
+    Aggregates report_downloads rows attributed to this counsellor
+    (downloaded_by_user_id) — total volume, which students, and when.
+
+    Only downloads recorded after the attribution columns landed are
+    attributable; older rows have NULL attribution and are excluded by
+    construction (they match no downloaded_by_user_id).
+    """
+    counsellor = _get_counsellor_or_404(db, counsellor_id)
+
+    q = db.query(models.ReportDownload).filter(
+        models.ReportDownload.downloaded_by_user_id == counsellor_id
+    )
+    if from_date:
+        q = q.filter(models.ReportDownload.downloaded_at >= from_date)
+    if to_date:
+        q = q.filter(models.ReportDownload.downloaded_at <= to_date)
+
+    total_downloads, first_at, last_at, distinct_students = (
+        q.with_entities(
+            func.count(models.ReportDownload.id),
+            func.min(models.ReportDownload.downloaded_at),
+            func.max(models.ReportDownload.downloaded_at),
+            func.count(func.distinct(models.ReportDownload.student_id)),
+        ).one()
+    )
+
+    per_student_rows = (
+        q.with_entities(
+            models.ReportDownload.student_id,
+            models.Student.name,
+            func.count(models.ReportDownload.id).label("downloads"),
+            func.max(models.ReportDownload.downloaded_at).label("last_downloaded_at"),
+        )
+        .outerjoin(models.Student, models.Student.id == models.ReportDownload.student_id)
+        .group_by(models.ReportDownload.student_id, models.Student.name)
+        .order_by(func.count(models.ReportDownload.id).desc())
+        .all()
+    )
+
+    return DownloadActivityOut(
+        counsellor_id=counsellor_id,
+        counsellor_email=counsellor.email,
+        from_date=from_date,
+        to_date=to_date,
+        summary=DownloadActivitySummary(
+            total_downloads=total_downloads or 0,
+            distinct_students=distinct_students or 0,
+            first_downloaded_at=first_at,
+            last_downloaded_at=last_at,
+        ),
+        per_student=[
+            DownloadActivityPerStudent(
+                student_id=sid,
+                student_name=name,
+                downloads=cnt,
+                last_downloaded_at=last_dl,
+            )
+            for sid, name, cnt, last_dl in per_student_rows
+        ],
+    )
 
 
 @router.patch(
