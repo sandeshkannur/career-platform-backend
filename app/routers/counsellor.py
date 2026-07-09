@@ -23,8 +23,9 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import models
@@ -37,6 +38,10 @@ from app.routers.admin.counsellor_assignments import (
     _assignment_out,
 )
 from app.services.counsellor_access import has_counsellor_access
+from app.services.student_analytics_service import (
+    get_student_row,
+    build_student_analytics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,13 @@ class AssignedStudentOut(BaseModel):
     name: str
     grade: Optional[int]
     assignment: AssignmentOut
+
+
+class StudentSearchResult(BaseModel):
+    student_id: int
+    name: str
+    grade: Optional[int]
+    email: Optional[str]
 
 
 @router.get(
@@ -95,6 +107,45 @@ def my_caseload(
         total=len(rows),
         assignments=[_assignment_out(r) for r in rows],
     )
+
+
+@router.get(
+    "/students/search",
+    response_model=list[StudentSearchResult],
+    summary="Search students by name or email (counsellor)",
+)
+def search_students(
+    q: str = Query(..., min_length=1, description="Name or email substring (case-insensitive)"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("counsellor")),
+):
+    """
+    Lightweight identity search so a counsellor can find a student to claim.
+    Deliberately does NOT require an existing assignment — a counsellor needs
+    to find students they aren't yet assigned to. Identity fields only
+    (student_id, name, grade, email); no analytics/scores/bias data.
+
+    Declared before /students/{student_id} so FastAPI doesn't try to parse
+    "search" as an int path param.
+    """
+    pattern = f"%{q}%"
+    rows = (
+        db.query(models.Student.id, models.Student.name, models.Student.grade, models.User.email)
+        .outerjoin(models.User, models.User.id == models.Student.user_id)
+        .filter(
+            or_(
+                models.Student.name.ilike(pattern),
+                models.User.email.ilike(pattern),
+            )
+        )
+        .order_by(models.Student.name.asc())
+        .limit(20)
+        .all()
+    )
+    return [
+        StudentSearchResult(student_id=r.id, name=r.name, grade=r.grade, email=r.email)
+        for r in rows
+    ]
 
 
 @router.get(
@@ -145,6 +196,38 @@ def get_assigned_student(
         grade=student.grade,
         assignment=_assignment_out(assignment),
     )
+
+
+@router.get(
+    "/students/{student_id}/analytics",
+    summary="Full analytics drill-down for one ASSIGNED student (counsellor)",
+)
+def get_assigned_student_analytics(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_role("counsellor")),
+):
+    """
+    Same 7-panel + KPI-strip payload as GET /v1/admin-student-analytics/{id},
+    gated on an ACTIVE assignment. Mirrors get_assigned_student()'s
+    check-before-lookup pattern exactly: the 403 fires before any analytics
+    query runs, so a denied request never touches student data and never
+    leaks whether the student id exists.
+    """
+    if not has_counsellor_access(db, current_user.id, student_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active assignment for this student",
+        )
+
+    student_row = get_student_row(db, student_id)
+    if not student_row:  # defensive: FK guarantees existence for assigned rows
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student not found: {student_id}",
+        )
+
+    return build_student_analytics(db, student_id, student_row)
 
 
 @router.post(
