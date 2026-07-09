@@ -71,6 +71,8 @@ class CounsellorOut(BaseModel):
     phone_number: Optional[str]
     role: str
     is_active: bool
+    # Nullable: accounts created before users.created_at existed report null.
+    created_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
 
