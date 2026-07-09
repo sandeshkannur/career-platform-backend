@@ -1520,6 +1520,12 @@ class ReportDownload(Base):
     locale = Column(String(20), nullable=False)
     tier = Column(String(10), nullable=False)     # "free" | "paid" (as served)
 
+    # Attribution: who triggered the download (stamped at write time).
+    # Nullable — rows from before these columns existed carry no attribution
+    # and are never backfilled (the information wasn't captured back then).
+    downloaded_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    downloaded_by_role = Column(String(20), nullable=True)  # "student" | "counsellor" | "admin"
+
     downloaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
 
