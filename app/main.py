@@ -246,6 +246,10 @@ def create_app() -> FastAPI:
         tags=["Interest Inventory"],
     )
 
+    # Counsellor self-service (phase 1: self-claim)
+    from app.routers.counsellor import router as counsellor_router
+    api_v1.include_router(counsellor_router, prefix="/counsellor", tags=["Counsellor"])
+
     # SME submissions
     from app.routers.sme_admin import router as sme_admin_router
     api_v1.include_router(sme_admin_router, prefix="/admin/sme", tags=["SME Submissions"])

@@ -13,6 +13,7 @@ from sqlalchemy import text
 from app import models
 from app.deps import get_db
 from app.auth.auth import require_admin_or_counsellor
+from app.services.counsellor_access import shadow_check_counsellor_access
 
 router = APIRouter()
 
@@ -89,6 +90,11 @@ def get_student_analytics(
 
     if not student_row:
         raise HTTPException(status_code=404, detail=f"Student {student_id} not found.")
+
+    # Phase-1 counsellor assignment shadow check: log-only, never blocks.
+    shadow_check_counsellor_access(
+        db, current_user, student_id, "GET /v1/admin-student-analytics/{student_id}"
+    )
 
     student = {
         "id":                int(student_row["id"]),
@@ -484,6 +490,12 @@ def get_student_report_downloads(
 
     if not student_row:
         raise HTTPException(status_code=404, detail=f"Student {student_id} not found.")
+
+    # Phase-1 counsellor assignment shadow check: log-only, never blocks.
+    shadow_check_counsellor_access(
+        db, current_user, student_id,
+        "GET /v1/admin-student-analytics/{student_id}/report-downloads",
+    )
 
     base = db.query(models.ReportDownload).filter(
         models.ReportDownload.student_id == student_id

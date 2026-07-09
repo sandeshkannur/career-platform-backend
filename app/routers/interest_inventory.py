@@ -19,6 +19,7 @@ from datetime import datetime
 from app import models
 from app.deps import get_db
 from app.auth.auth import get_current_active_user
+from app.services.counsellor_access import shadow_check_counsellor_access
 
 router = APIRouter(tags=['Interest Inventory'])
 
@@ -265,6 +266,11 @@ def get_interest_inventory(
     current_user: models.User = Depends(get_current_active_user),
 ):
     _assert_student_access(student_id, current_user, db)
+
+    # Phase-1 counsellor assignment shadow check: log-only, never blocks.
+    shadow_check_counsellor_access(
+        db, current_user, student_id, "GET /v1/interest/{student_id}"
+    )
 
     record = db.query(models.InterestInventoryResponse).filter(
         models.InterestInventoryResponse.student_id == student_id,
