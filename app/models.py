@@ -79,6 +79,9 @@ class User(Base):
     # management first). NOTE: login/token validation does not enforce this
     # yet — get_current_active_user is a pass-through today.
     is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    # Nullable: accounts created before this column existed have no known
+    # creation date and are not backfilled; new rows are stamped by the DB.
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
 
 
 class Student(Base):

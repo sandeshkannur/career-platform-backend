@@ -23,7 +23,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app import models
 from app.deps import get_db
@@ -51,6 +51,7 @@ class AssignmentOut(BaseModel):
     id: int
     counsellor_id: int
     student_id: int
+    student_name: Optional[str]
     assignment_type: str
     assigned_by: Optional[int]
     assigned_at: datetime
@@ -63,6 +64,20 @@ class CaseloadOut(BaseModel):
     counsellor_id: int
     total: int
     assignments: list[AssignmentOut]
+
+
+def _assignment_out(assignment: models.CounsellorAssignment) -> AssignmentOut:
+    """Serialize an assignment row, resolving student_name via the relationship."""
+    return AssignmentOut(
+        id=assignment.id,
+        counsellor_id=assignment.counsellor_id,
+        student_id=assignment.student_id,
+        student_name=assignment.student.name if assignment.student else None,
+        assignment_type=assignment.assignment_type,
+        assigned_by=assignment.assigned_by,
+        assigned_at=assignment.assigned_at,
+        active=assignment.active,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +166,7 @@ def create_assignment(
     )
     db.commit()
     db.refresh(assignment)
-    return assignment
+    return _assignment_out(assignment)
 
 
 @router.get(
@@ -167,14 +182,20 @@ def list_caseload(
 ):
     _get_active_counsellor_or_404(db, counsellor_id)
 
-    q = db.query(models.CounsellorAssignment).filter(
-        models.CounsellorAssignment.counsellor_id == counsellor_id
+    q = (
+        db.query(models.CounsellorAssignment)
+        .options(joinedload(models.CounsellorAssignment.student))
+        .filter(models.CounsellorAssignment.counsellor_id == counsellor_id)
     )
     if not include_inactive:
         q = q.filter(models.CounsellorAssignment.active.is_(True))
 
     rows = q.order_by(models.CounsellorAssignment.assigned_at.desc()).all()
-    return CaseloadOut(counsellor_id=counsellor_id, total=len(rows), assignments=rows)
+    return CaseloadOut(
+        counsellor_id=counsellor_id,
+        total=len(rows),
+        assignments=[_assignment_out(r) for r in rows],
+    )
 
 
 @router.delete(
@@ -218,4 +239,4 @@ def deactivate_assignment(
         db.commit()
         db.refresh(assignment)
 
-    return assignment
+    return _assignment_out(assignment)
