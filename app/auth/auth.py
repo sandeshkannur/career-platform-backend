@@ -54,6 +54,20 @@ def is_beta_email_allowed(email: str) -> bool:
         return True
     return (email or "").strip().lower() in allowed
 
+
+# Roles exempt from the beta allowlist at login. These roles can only be
+# assigned via admin-gated endpoints (public signup is hardcoded to
+# role="student"), so an account holding one was deliberately created by an
+# admin and is already vouched for. Students remain fully gated.
+BETA_EXEMPT_ROLES = {"admin", "counsellor"}
+
+
+def _is_beta_exempt(user: Optional[models.User]) -> bool:
+    if user is None:
+        return False
+    role = (getattr(user, "role", None) or "").strip().lower()
+    return role in BETA_EXEMPT_ROLES
+
 # -------------------------------------------------------------------
 # PASSWORD HASHING
 # -------------------------------------------------------------------
@@ -346,8 +360,10 @@ def login_json(
     # ✅ Normalize email once
     email_normalized = (user_in.email or "").strip().lower()
 
-    # ✅ PR-PROD01: Beta allowlist gate
-    if not is_beta_email_allowed(email_normalized):
+    # ✅ PR-PROD01: Beta allowlist gate (admin/counsellor accounts bypass —
+    # those roles are only assignable via admin-gated endpoints)
+    existing = db.query(models.User).filter(models.User.email == email_normalized).first()
+    if not _is_beta_exempt(existing) and not is_beta_email_allowed(email_normalized):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Beta access restricted. This email is not allowlisted.",
@@ -402,8 +418,10 @@ def login(
     email = (form_data.username or "").strip().lower()
     password = form_data.password
 
-    # ✅ PR-PROD01: Beta allowlist gate
-    if not is_beta_email_allowed(email):
+    # ✅ PR-PROD01: Beta allowlist gate (admin/counsellor accounts bypass —
+    # those roles are only assignable via admin-gated endpoints)
+    existing = db.query(models.User).filter(models.User.email == email).first()
+    if not _is_beta_exempt(existing) and not is_beta_email_allowed(email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Beta access restricted. This email is not allowlisted.",
@@ -708,7 +726,7 @@ def verify_login_otp(
         raise HTTPException(status_code=404, detail="Account not found")
     _ensure_account_active(user)
 
-    if not is_beta_email_allowed(user.email):
+    if not _is_beta_exempt(user) and not is_beta_email_allowed(user.email):
         raise HTTPException(status_code=403, detail="Beta access restricted.")
 
     access_token = create_access_token(
