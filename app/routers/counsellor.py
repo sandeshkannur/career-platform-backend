@@ -37,6 +37,7 @@ class ClaimOut(BaseModel):
     id: int
     counsellor_id: int
     student_id: int
+    student_name: Optional[str]
     assignment_type: str
     assigned_by: Optional[int]
     assigned_at: datetime
@@ -106,4 +107,13 @@ def claim_student(
     )
     db.commit()
     db.refresh(assignment)
-    return assignment
+    return ClaimOut(
+        id=assignment.id,
+        counsellor_id=assignment.counsellor_id,
+        student_id=assignment.student_id,
+        student_name=student.name,
+        assignment_type=assignment.assignment_type,
+        assigned_by=assignment.assigned_by,
+        assigned_at=assignment.assigned_at,
+        active=assignment.active,
+    )
