@@ -26,6 +26,7 @@ from app import models, schemas
 from app.auth.auth import get_current_active_user
 from app.deps import get_db
 from app.services import report_builder
+from app.services.counsellor_access import shadow_check_counsellor_access
 from app.projections.student_safe import project_student_safe
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
@@ -137,6 +138,11 @@ def get_scorecard_report(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this student's report",
         )
+
+    # Phase-1 counsellor assignment shadow check: log-only, never blocks.
+    shadow_check_counsellor_access(
+        db, current_user, student_id, "GET /v1/reports/scorecard/{student_id}"
+    )
 
     # ---------------------------------------------------------
     # 3) Resolve deterministic source assessment + results

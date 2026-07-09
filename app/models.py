@@ -22,6 +22,7 @@ from sqlalchemy import (
     Numeric,
     Text,
     SmallInteger,
+    CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -898,6 +899,46 @@ class AdminAuditTrail(Base):
     user_email  = Column(String(320), nullable=False)
     details     = Column(JSON_TYPE,   nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+# =========================================================
+# Counsellor ↔ Student assignments (phase 1: observability only)
+# =========================================================
+
+class CounsellorAssignment(Base):
+    """
+    Links a counsellor (users row, role="counsellor") to a student.
+
+    Phase 1 (feat/counsellor-assignments-phase1):
+    - Written by admin manual assignment and counsellor self-claim only.
+    - Read by the log-only shadow check (services/counsellor_access.py);
+      access is NEVER blocked on this table in this phase.
+    - assignment_type carries all four product values up front so enabling
+      school_auto / region_auto later needs no schema migration.
+    - No uniqueness on student_id: a student can have multiple active
+      counsellors (confirmed product decision).
+    - Soft-remove only: deactivation sets active=false (platform convention).
+    """
+    __tablename__ = "counsellor_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    counsellor_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    assignment_type = Column(String(32), nullable=False)
+    # Null for self_claimed; the acting admin's users.id otherwise.
+    assigned_by = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    active = Column(Boolean, nullable=False, default=True, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "assignment_type IN ('admin_assigned', 'school_auto', 'self_claimed', 'region_auto')",
+            name="ck_counsellor_assignments_type",
+        ),
+    )
+
+    counsellor = relationship("User", foreign_keys=[counsellor_id])
+    student = relationship("Student", foreign_keys=[student_id])
 
 
 # =========================================================
