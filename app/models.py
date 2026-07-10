@@ -752,6 +752,10 @@ class ConsentLog(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    # Locale the guardian consent email/notice was rendered in. Nullable so
+    # existing rows are untouched; new rows default to "en" server-side.
+    guardian_locale = Column(String(10), nullable=True, server_default="en")
+
 
 class LoginOtp(Base):
     """

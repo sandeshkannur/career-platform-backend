@@ -959,6 +959,24 @@ class StudentResultHistoryResponse(BaseModel):
 # B13: Consent verification (guardian-facing, compliance)
 # =========================================================
 
+class ConsentRequestIn(BaseModel):
+    """
+    Optional request body for POST /v1/consent/request.
+
+    guardian_locale: which language to render the guardian consent email in.
+    Absent => DEFAULT_LOCALE (keeps the current frontend, which sends no
+    body, working unchanged).
+
+    Deliberately NOT validated against SUPPORTED_LOCALES here: a Pydantic
+    validator raising ValueError surfaces as FastAPI's automatic 422, and
+    the contract for this endpoint calls for 400 on an unknown locale. The
+    router validates the (normalized, still-not-hardcoded) value against
+    app/services/notifications/locales.SUPPORTED_LOCALES itself and raises
+    HTTPException(400) explicitly.
+    """
+    guardian_locale: Optional[str] = None
+
+
 class ConsentVerifyRequest(BaseModel):
     """
     Input contract:
