@@ -11,10 +11,9 @@
 # - We keep existing verify behavior intact, but add production-grade idempotency.
 #
 # Option A (Playwright-friendly DEV mode):
-# - When ENV=dev|test, /v1/consent/request also returns {dev: {token, otp}}
-# - In prod, secrets are NEVER returned.
+# - When CP_EXPOSE_AUTH_SECRETS=true, /v1/consent/request also returns {dev: {token, otp}}
+# - In prod, secrets are NEVER returned (this must stay false in prod).
 
-import os
 import logging  # ✅ ADDED
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -25,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.deps import get_db
-from app.auth.auth import get_current_active_user
+from app.auth.auth import get_current_active_user, expose_auth_secrets
 
 
 from app.utils.consent_tokens import (
@@ -82,9 +81,9 @@ def request_consent(
     - Stores ONLY metadata in DB (never raw OTP / never raw JWT)
     - Delivery stub prints token+otp to server logs (Phase 2 integrates provider)
 
-    Option A (DEV/TEST only):
-    - If ENV=dev|test, returns dev.token + dev.otp to make Playwright stable.
-    - PROD NEVER returns secrets.
+    Option A (CP_EXPOSE_AUTH_SECRETS only):
+    - If CP_EXPOSE_AUTH_SECRETS=true, returns dev.token + dev.otp to make Playwright stable.
+    - PROD NEVER returns secrets (flag must stay false in prod).
     """
     if getattr(current_user, "role", None) != "student":
         raise HTTPException(status_code=403, detail="Only students can request consent")
@@ -130,9 +129,10 @@ def request_consent(
             "expires_at": existing.expires_at,
         }
 
-        # DEV / TEST ONLY – required for Playwright stability
+        # CP_EXPOSE_AUTH_SECRETS ONLY – required for Playwright stability.
+        # This returns a live guardian-consent token + OTP; never true in prod.
         # Note: OTP is not stored, so we mint a fresh OTP+token and update the log row.
-        if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+        if expose_auth_secrets():
             from app.utils.consent_request import (
                 generate_otp,
                 hash_otp_sha256,
@@ -234,14 +234,13 @@ def request_consent(
     print("=================================")
 
     # -------------------------------------------------------------------
-    # Option A: DEV / TEST ONLY - expose token + OTP for Playwright automation
+    # Option A: CP_EXPOSE_AUTH_SECRETS ONLY - expose token + OTP for Playwright
     # -------------------------------------------------------------------
     # SECURITY NOTE:
-    # - "dev" payload is returned ONLY when ENV=dev|test.
-    # - Never enable this in prod; OTP/JWT are secrets.
+    # - "dev" payload is returned ONLY when CP_EXPOSE_AUTH_SECRETS=true.
+    # - Never enable this in prod; OTP/JWT are secrets (guardian-consent bypass).
 
-    #print("CONSENT_REQUEST ENV =", repr(os.getenv("ENV")))
-    if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+    if expose_auth_secrets():
         return {
             "consent_id": token_bundle["jti"],
             "delivery": "email",

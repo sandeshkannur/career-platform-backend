@@ -44,6 +44,18 @@ def _parse_allowed_emails(raw: Optional[str]) -> set[str]:
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 
+def expose_auth_secrets() -> bool:
+    """
+    Controls whether OTP/consent-token secrets are printed to logs or
+    returned in HTTP responses (login OTP request, consent request).
+    This MUST be false in production — it is a full auth/consent bypass
+    (request OTP or guardian-consent token, read it back, use it).
+    Decoupled from ENV because ENV also gates schema creation and cannot
+    simply be flipped for prod. Fails closed: unset/garbage => False.
+    """
+    return (os.getenv("CP_EXPOSE_AUTH_SECRETS") or "").strip().lower() in ("1", "true", "yes")
+
+
 def is_beta_email_allowed(email: str) -> bool:
     """
     If CP_BETA_ALLOWED_EMAILS is unset/empty => allow all (dev-friendly).
@@ -605,8 +617,8 @@ def request_login_otp(
     Requests an OTP for phone-based login.
     - Phone must already be on file for an existing user.
     - Rate limited: 60s cooldown + max 5/hour per phone.
-    - DEV/TEST (ENV=dev|test): returns the OTP directly in the response
-      for testing without an SMS gateway. NEVER returned in prod.
+    - When CP_EXPOSE_AUTH_SECRETS=true: returns the OTP directly in the response
+      for testing without an SMS gateway. Must never be true in prod.
     - Role-agnostic by design: works for any role with a phone_number set.
     """
     phone = (payload.phone_number or "").strip()
@@ -662,14 +674,14 @@ def request_login_otp(
     db.add(row)
     db.commit()
 
-    if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+    if expose_auth_secrets():
         print("=== LOGIN OTP REQUEST (DEV STUB) ===")
         print("phone_number:", phone)
         print("otp:", otp_plain)
         print("expires_at:", expires_at.isoformat())
         print("=====================================")
 
-    if (os.getenv("ENV") or "").strip().lower() in ("dev", "test"):
+    if expose_auth_secrets():
         return {"expires_at": expires_at, "dev": {"otp": otp_plain}}
 
     return {"expires_at": expires_at, "dev": None}

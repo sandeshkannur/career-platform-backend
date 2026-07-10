@@ -69,6 +69,20 @@ def create_app() -> FastAPI:
     run_startup_tasks(DATABASE_URL, SKIP_DB_WAIT)
 
     # ------------------------------------------------------------
+    # SECRET-EXPOSURE FLAG CHECK
+    # CP_EXPOSE_AUTH_SECRETS makes login-OTP and guardian-consent
+    # endpoints return live secrets in the HTTP response. Announce it
+    # loudly if it's ever on, since it must never be true in prod.
+    # ------------------------------------------------------------
+    from app.auth.auth import expose_auth_secrets
+    if expose_auth_secrets():
+        logger.warning(
+            "CP_EXPOSE_AUTH_SECRETS is TRUE — POST /v1/auth/otp/request and "
+            "POST /v1/consent/request will return live OTP/consent secrets in "
+            "the response body. This must NEVER be enabled in production."
+        )
+
+    # ------------------------------------------------------------
     # 3A) FASTAPI APP CREATION + CORS (CONFIGURE ONCE)
     # ------------------------------------------------------------
     _docs_kwargs = (
