@@ -1,13 +1,14 @@
 # backend/app/routers/consent.py
 #
 # Phase 1 (incremental) changes:
-# ✅ POST /v1/consent/request  (student-only) - initiate guardian consent (DEV delivery stub)
+# ✅ POST /v1/consent/request  (student-only) - initiate guardian consent (delivered via app/services/notifications)
 # ✅ GET  /v1/consent/status   (student-only) - derived from consent_logs (read-only)
 # ✅ POST /v1/consent/verify   (guardian JWT required) - self-contained token validation + audit logging
 #
 # Notes:
 # - consent_verified is derived in /v1/auth/me (already done).
-# - Email/SMS delivery is intentionally stubbed (prints token+otp to logs).
+# - Delivery goes through app.services.notifications.factory.get_notifier();
+#   CP_NOTIFIER selects "log" (default, logs only) or "ses" (real email via SES).
 # - We keep existing verify behavior intact, but add production-grade idempotency.
 #
 # Option A (Playwright-friendly DEV mode):
@@ -15,6 +16,7 @@
 # - In prod, secrets are NEVER returned (this must stay false in prod).
 
 import logging  # ✅ ADDED
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -25,6 +27,12 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.deps import get_db
 from app.auth.auth import get_current_active_user, expose_auth_secrets
+from app.services.notifications.factory import get_notifier
+from app.services.notifications.locales import (
+    DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+    normalize_locale,
+)
 
 
 from app.utils.consent_tokens import (
@@ -67,6 +75,7 @@ def _get_request_ip(req: Request) -> Optional[str]:
 )
 def request_consent(
     request: Request,
+    payload: Optional[schemas.ConsentRequestIn] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user),
 ):
@@ -79,7 +88,7 @@ def request_consent(
     - Idempotent: if an unexpired, unverified request exists, return it
     - Rate-limited: cooldown + hourly cap (DB-based, no Redis needed)
     - Stores ONLY metadata in DB (never raw OTP / never raw JWT)
-    - Delivery stub prints token+otp to server logs (Phase 2 integrates provider)
+    - Delivers via the configured notifier (CP_NOTIFIER; defaults to logging only)
 
     Option A (CP_EXPOSE_AUTH_SECRETS only):
     - If CP_EXPOSE_AUTH_SECRETS=true, returns dev.token + dev.otp to make Playwright stable.
@@ -94,6 +103,21 @@ def request_consent(
     guardian_email = getattr(current_user, "guardian_email", None)
     if not guardian_email:
         raise HTTPException(status_code=400, detail="Guardian email missing for minor")
+
+    # guardian_locale: absent => DEFAULT_LOCALE (keeps current frontend, which
+    # sends no body, working unchanged). Membership is checked against
+    # SUPPORTED_LOCALES from app/services/notifications/locales.py — the
+    # single source of truth — not hardcoded here.
+    raw_locale = payload.guardian_locale if payload else None
+    if raw_locale is None:
+        guardian_locale = DEFAULT_LOCALE
+    else:
+        guardian_locale = normalize_locale(raw_locale)
+        if guardian_locale not in SUPPORTED_LOCALES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported guardian_locale: {raw_locale!r}. Supported: {SUPPORTED_LOCALES}",
+            )
 
     # Resolve Student.id (needed for logging + future reporting)
     student = (
@@ -220,18 +244,39 @@ def request_consent(
         ip=ip,
         user_agent=user_agent,
         created_at=now,  # explicit for clarity (DB default also OK)
+        guardian_locale=guardian_locale,
     )
     db.add(row)
     db.commit()
 
-    # 5) Delivery stub (DEV ONLY)
-    # In Phase 2, replace this with email/SMS provider integration.
-    print("=== CONSENT REQUEST (DEV STUB) ===")
-    print("guardian_email:", guardian_email)
-    print("consent_token:", token_bundle["token"])
-    print("otp:", otp_plain)
-    print("expires_at:", token_bundle["expires_at"].isoformat())
-    print("=================================")
+    # 5) Deliver via the configured notifier (CP_NOTIFIER; defaults to
+    # LogNotifier, i.e. logs only — no email actually sent). Notifier
+    # implementations already catch their own delivery errors (never raise
+    # by contract), but this call is additionally wrapped as a safety net:
+    # the ConsentLog row above is already committed, and this request must
+    # succeed regardless of delivery outcome even if a notifier implementation
+    # violates that contract.
+    frontend_base_url = (os.getenv("CP_FRONTEND_BASE_URL") or "https://mapyourcareer.in").rstrip("/")
+    verification_url = f"{frontend_base_url}/guardian/verify?token={token_bundle['token']}"
+
+    try:
+        get_notifier().send(
+            to=guardian_email,
+            template="consent_request",
+            context={
+                "student_name": student.name,
+                "otp": otp_plain,
+                "verification_url": verification_url,
+            },
+            locale=guardian_locale,
+        )
+    except Exception:
+        logger.exception(
+            "Notifier raised despite the never-raise contract; consent request "
+            "still succeeds. guardian_email=%s consent_id=%s",
+            guardian_email,
+            token_bundle["jti"],
+        )
 
     # -------------------------------------------------------------------
     # Option A: CP_EXPOSE_AUTH_SECRETS ONLY - expose token + OTP for Playwright
