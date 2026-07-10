@@ -3,11 +3,13 @@ Admin DPDP compliance metrics endpoint.
 Auth: inherited from the admin package router (require_role("admin")).
 
 GET /v1/admin/compliance/dpdp
+GET /v1/admin/compliance/consent-history/{student_id}
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,36 @@ router = APIRouter(prefix="/compliance")
 
 _DATA_RETENTION_DAYS = 365 * 3   # 3-year default retention policy
 _MINOR_CONSENT_THRESHOLD = 18    # years
+
+
+# ---------------------------------------------------------------------------
+# Pydantic response schemas — consent history
+# ---------------------------------------------------------------------------
+
+class ConsentLogEntryOut(BaseModel):
+    """
+    One consent_logs row. Deliberately excludes token_jti (a token
+    identifier, not compliance data) and ip/user_agent (the guardian's
+    request metadata, not the student's — an admin compliance view has no
+    reason to see them).
+    """
+    id: int
+    status: str
+    guardian_email: str
+    guardian_locale: Optional[str]
+    created_at: datetime
+    verified_at: Optional[datetime]
+    reason: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
+class StudentConsentHistoryOut(BaseModel):
+    student_id: int
+    student_user_id: Optional[int]
+    consented: bool
+    consented_at: Optional[datetime]
+    entries: List[ConsentLogEntryOut]
 
 
 @router.get("/dpdp", summary="DPDP compliance metrics (admin)")
@@ -111,3 +143,46 @@ def get_dpdp_compliance(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "pending_deletions": pending_deletions,
         "recent_consents": recent_consents,
     }
+
+
+@router.get(
+    "/consent-history/{student_id}",
+    response_model=StudentConsentHistoryOut,
+    summary="Guardian consent history for a student (admin, DPDP audit)",
+)
+def get_student_consent_history(
+    student_id: int,
+    db: Session = Depends(get_db),
+) -> StudentConsentHistoryOut:
+    """
+    Full consent_logs history for one student, newest first, plus a derived
+    current state: has this student's guardian consented, and when.
+
+    "Consented" is true if ANY row for this student is status='verified' —
+    not just the latest row — since a verified consent is not undone by a
+    later attempt (e.g. a stray/duplicate re-verify rejected as
+    already_verified). consented_at is the verified_at of that row.
+    """
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student not found: {student_id}",
+        )
+
+    rows = (
+        db.query(models.ConsentLog)
+        .filter(models.ConsentLog.student_id == student_id)
+        .order_by(models.ConsentLog.created_at.desc())
+        .all()
+    )
+
+    verified_row = next((r for r in rows if r.status == "verified"), None)
+
+    return StudentConsentHistoryOut(
+        student_id=student_id,
+        student_user_id=student.user_id,
+        consented=verified_row is not None,
+        consented_at=verified_row.verified_at if verified_row else None,
+        entries=rows,
+    )

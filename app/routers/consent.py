@@ -538,6 +538,59 @@ def verify_consent(
 
 
 # -------------------------------------------------------------------
+# Internal: resolve guardian_locale for a verify-path write
+# -------------------------------------------------------------------
+def _resolve_guardian_locale(
+    db: Session,
+    student_user_id: int,
+    token_jti: Optional[str],
+) -> str:
+    """
+    The verify path (verified / rejected-*) writes a NEW ConsentLog row per
+    attempt. It must carry guardian_locale from the originating 'sent' row
+    (matched on token_jti + student_user_id) rather than let it fall to the
+    column default — the language the guardian was actually contacted in is
+    part of the DPDP record.
+
+    Falls back to DEFAULT_LOCALE + a WARNING if no token_jti is available
+    (e.g. a malformed/invalid token that never decoded) or no matching 'sent'
+    row exists. An audit-trail defect must never block a guardian from
+    consenting, so this never raises.
+    """
+    if not token_jti:
+        logger.warning(
+            "guardian_locale: no token_jti available (student_user_id=%s) — "
+            "falling back to %s",
+            student_user_id,
+            DEFAULT_LOCALE,
+        )
+        return DEFAULT_LOCALE
+
+    sent_row = (
+        db.query(models.ConsentLog)
+        .filter(
+            models.ConsentLog.student_user_id == student_user_id,
+            models.ConsentLog.token_jti == token_jti,
+            models.ConsentLog.status == "sent",
+        )
+        .order_by(models.ConsentLog.created_at.desc())
+        .first()
+    )
+
+    if sent_row is None or not sent_row.guardian_locale:
+        logger.warning(
+            "guardian_locale: no originating 'sent' ConsentLog found for "
+            "token_jti=%s student_user_id=%s — falling back to %s",
+            token_jti,
+            student_user_id,
+            DEFAULT_LOCALE,
+        )
+        return DEFAULT_LOCALE
+
+    return sent_row.guardian_locale
+
+
+# -------------------------------------------------------------------
 # Internal: write-only audit log
 # -------------------------------------------------------------------
 def _write_consent_log(
@@ -557,9 +610,14 @@ def _write_consent_log(
     """
     Writes an audit log row to consent_logs.
 
-    Must remain "write-only" (does not query DB), so audit writes are deterministic
-    and never affect auth/session correctness.
+    Must remain "write-only" (does not query DB for its own status logic),
+    so audit writes are deterministic and never affect auth/session
+    correctness. The guardian_locale lookup below is a read of the
+    originating 'sent' row, not a decision input for verification — it only
+    affects what gets recorded, never whether the row is written.
     """
+    guardian_locale = _resolve_guardian_locale(db, student_user_id, token_jti)
+
     row = models.ConsentLog(
         student_id=student_id,
         student_user_id=student_user_id,
@@ -572,6 +630,7 @@ def _write_consent_log(
         expires_at=expires_at,
         ip=ip,
         user_agent=user_agent,
+        guardian_locale=guardian_locale,
     )
     db.add(row)
     db.commit()
