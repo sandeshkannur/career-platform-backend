@@ -83,6 +83,14 @@ def create_app() -> FastAPI:
         )
 
     # ------------------------------------------------------------
+    # ACTIVE NOTIFIER ANNOUNCEMENT
+    # Names which notification channel (log/ses) is active, so it's
+    # never ambiguous in production logs.
+    # ------------------------------------------------------------
+    from app.services.notifications.factory import warn_active_notifier_at_startup
+    warn_active_notifier_at_startup()
+
+    # ------------------------------------------------------------
     # 3A) FASTAPI APP CREATION + CORS (CONFIGURE ONCE)
     # ------------------------------------------------------------
     _docs_kwargs = (
