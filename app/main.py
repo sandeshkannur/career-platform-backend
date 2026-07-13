@@ -181,6 +181,9 @@ def create_app() -> FastAPI:
     # B13: Consent verification (compliance, guardian-facing)
     from app.routers.consent import router as consent_router
 
+    # Password reset: authenticated change-password + public forgot-password
+    from app.routers.password_reset import router as password_reset_router
+
     # B14: Student report download payload (read-only)
     from app.routers.reports import router as reports_router
 
@@ -257,6 +260,9 @@ def create_app() -> FastAPI:
 
     # B13: Consent verification (compliance, guardian-facing)
     api_v1.include_router(consent_router, prefix="", tags=["Consent"])                          # → /v1/consent/*
+
+    # Password reset: authenticated change-password + public forgot-password
+    api_v1.include_router(password_reset_router, prefix="", tags=["Password Reset"])            # → /v1/auth/*
 
     # B14: Student report endpoint (read-only, ownership enforced)
     api_v1.include_router(reports_router, prefix="", tags=["Reports"])                          # → /v1/reports/*
