@@ -783,6 +783,41 @@ class LoginOtp(Base):
     user_agent = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+
+class PasswordResetLog(Base):
+    """
+    PasswordResetLog – audit log for password changes/resets, covering both
+    authenticated self-change and the public forgot-password flow (email or
+    mobile channel), mirroring ConsentLog's write-only audit-trail pattern.
+
+    user_id is nullable so an attempt against an unknown identifier (forgot-
+    password request for an email/phone with no account) can still be
+    logged for abuse investigation, without leaking whether the account
+    exists to the caller.
+    """
+    __tablename__ = "password_reset_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # 'self_change' | 'forgot_email' | 'forgot_mobile' | 'admin_reset'
+    method = Column(String(32), nullable=False, index=True)
+
+    # 'requested' | 'otp_sent' | 'verified' | 'completed' | 'failed' | 'expired' | 'rejected'
+    status = Column(String(32), nullable=False, index=True)
+
+    reason = Column(String(64), nullable=True)
+
+    initiated_by_admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    token_jti = Column(String(128), nullable=True, index=True)
+
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 # =========================================================
 # Associated Quality (AQ) and AQFacet
 # =========================================================

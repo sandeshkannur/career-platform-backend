@@ -1015,7 +1015,53 @@ class ConsentRequestResponse(BaseModel):
     dev: Optional[ConsentDevPayload] = None
 
     model_config = ConfigDict(from_attributes=True)
-    
+
+
+# =========================================================
+# Password reset (self-change + forgot-password, email/mobile)
+# =========================================================
+
+class ChangePasswordRequest(BaseModel):
+    """
+    Input contract for POST /v1/auth/change-password (authenticated).
+    """
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """
+    Input contract for POST /v1/auth/forgot-password/request (public).
+
+    channel: "email" | "mobile" — selects which User field `identifier` is
+    matched against, and which notifier (email/SMS) delivers the OTP.
+    identifier: email address or phone number, depending on channel.
+    """
+    channel: Literal["email", "mobile"]
+    identifier: str = Field(..., min_length=1)
+
+
+class PasswordResetDevPayload(BaseModel):
+    token: str
+    otp: str
+
+
+class ForgotPasswordRequestResponse(BaseModel):
+    message: str
+    expires_at: Optional[datetime] = None
+    dev: Optional[PasswordResetDevPayload] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ForgotPasswordVerifyRequest(BaseModel):
+    """
+    Input contract for POST /v1/auth/forgot-password/verify (public).
+    """
+    token: str = Field(..., min_length=10)
+    otp: str = Field(..., min_length=1, max_length=32)
+    new_password: str = Field(..., min_length=8)
+
 # =========================================================
 # PR18: Canonical Report Contract (sections-based)
 # - Single deterministic "report document"

@@ -1,0 +1,409 @@
+# backend/app/routers/password_reset.py
+#
+# Password reset module:
+# - POST /v1/auth/change-password          (authenticated self-service)
+# - POST /v1/auth/forgot-password/request  (public, email or mobile channel)
+# - POST /v1/auth/forgot-password/verify   (public, token+OTP -> new password)
+#
+# Mirrors app/routers/consent.py's patterns:
+# - Self-contained JWT + SHA-256 OTP hash (app/utils/password_reset_tokens.py,
+#   app/utils/password_reset_request.py) — token validation never reads the DB.
+# - Every attempt (success or failure) is written to password_reset_logs
+#   (write-only audit trail), mirroring _write_consent_log's usage in
+#   app/routers/consent.py.
+# - Delivery goes through app.services.notifications.factory: get_notifier()
+#   for email (CP_NOTIFIER; defaults to logging only), get_sms_notifier()
+#   for mobile (CP_SMS_NOTIFIER; only LogSmsNotifier exists today).
+# - Option A (Playwright-friendly DEV mode): when CP_EXPOSE_AUTH_SECRETS=true,
+#   /v1/auth/forgot-password/request also returns {dev: {token, otp}}. In
+#   prod this must stay false — never returns secrets.
+#
+# IMPORTANT: reset tokens use a distinct claims shape/jti prefix ("pwreset-")
+# from consent tokens ("consent-") so the two flows can never be replayed
+# against each other.
+
+import logging
+import os
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from app import models, schemas
+from app.deps import get_db
+from app.auth.auth import (
+    get_current_active_user,
+    get_password_hash,
+    verify_password,
+    expose_auth_secrets,
+    SECRET_KEY,
+    ALGORITHM,
+)
+from app.services.notifications.factory import get_notifier, get_sms_notifier
+from app.services.notifications.locales import DEFAULT_LOCALE
+
+from app.utils.password_reset_tokens import (
+    ResetTokenInvalid,
+    ResetTokenExpired,
+    ResetOtpInvalid,
+    decode_and_validate_reset_token,
+    decode_without_exp_verification,
+    verify_otp_against_claim,
+)
+from app.utils.password_reset_request import (
+    generate_otp,
+    hash_otp_sha256,
+    create_reset_token_jwt,
+)
+
+router = APIRouter(prefix="/auth", tags=["Password Reset"])
+
+logger = logging.getLogger(__name__)
+
+
+# -------------------------------------------------------------------
+# Small helpers
+# -------------------------------------------------------------------
+def _get_request_ip(req: Request) -> Optional[str]:
+    return req.client.host if req.client else None
+
+
+def _write_password_reset_log(
+    db: Session,
+    user_id: Optional[int],
+    method: str,
+    status: str,
+    reason: Optional[str],
+    token_jti: Optional[str],
+    ip: Optional[str],
+    user_agent: Optional[str],
+    initiated_by_admin_id: Optional[int] = None,
+) -> None:
+    """
+    Writes an audit log row to password_reset_logs. Write-only, mirroring
+    _write_consent_log in app/routers/consent.py.
+    """
+    row = models.PasswordResetLog(
+        user_id=user_id,
+        method=method,
+        status=status,
+        reason=reason,
+        initiated_by_admin_id=initiated_by_admin_id,
+        token_jti=token_jti,
+        ip=ip,
+        user_agent=user_agent,
+    )
+    db.add(row)
+    db.commit()
+
+
+# -------------------------------------------------------------------
+# Authenticated self-service: change password
+# -------------------------------------------------------------------
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    payload: schemas.ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user),
+):
+    """
+    Authenticated user changes their own password.
+
+    - Verifies current_password against the stored hash (401 on mismatch)
+    - new_password policy: min_length=8 (schemas.ChangePasswordRequest),
+      the same bound already enforced for admin-created counsellor accounts
+      (app/routers/admin/counsellors.py CounsellorCreate.password) — public
+      signup (schemas.UserCreate.password) enforces no policy at all, so
+      that bound is not a usable precedent here.
+    """
+    ip = _get_request_ip(request)
+    user_agent = request.headers.get("user-agent")
+
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        _write_password_reset_log(
+            db=db,
+            user_id=current_user.id,
+            method="self_change",
+            status="failed",
+            reason="invalid_current_password",
+            token_jti=None,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    db.commit()
+
+    _write_password_reset_log(
+        db=db,
+        user_id=current_user.id,
+        method="self_change",
+        status="completed",
+        reason=None,
+        token_jti=None,
+        ip=ip,
+        user_agent=user_agent,
+    )
+
+    return {"success": True}
+
+
+# -------------------------------------------------------------------
+# Public: forgot-password request (email or mobile channel)
+# -------------------------------------------------------------------
+@router.post(
+    "/forgot-password/request",
+    response_model=schemas.ForgotPasswordRequestResponse,
+    status_code=status.HTTP_200_OK,
+)
+def forgot_password_request(
+    payload: schemas.ForgotPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Public endpoint. Never reveals whether the identifier (email/phone)
+    belongs to an account — always returns the same generic message.
+
+    - identifier found: generates OTP + reset token (30 min TTL), logs
+      status='otp_sent', dispatches via the configured notifier for the
+      requested channel.
+    - identifier not found: logs status='rejected' reason='identifier_not_found'
+      (user_id=None) for abuse investigation, but still returns success.
+    """
+    ip = _get_request_ip(request)
+    user_agent = request.headers.get("user-agent")
+
+    generic_message = "If an account exists, reset instructions were sent."
+    identifier_raw = (payload.identifier or "").strip()
+
+    if payload.channel == "email":
+        identifier = identifier_raw.lower()
+        user = db.query(models.User).filter(models.User.email == identifier).first()
+        method = "forgot_email"
+    else:
+        identifier = identifier_raw
+        user = db.query(models.User).filter(models.User.phone_number == identifier).first()
+        method = "forgot_mobile"
+
+    if not user:
+        _write_password_reset_log(
+            db=db,
+            user_id=None,
+            method=method,
+            status="rejected",
+            reason="identifier_not_found",
+            token_jti=None,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        return schemas.ForgotPasswordRequestResponse(message=generic_message)
+
+    otp_plain = generate_otp()
+    otp_hash = hash_otp_sha256(otp_plain)
+
+    token_bundle = create_reset_token_jwt(
+        user_id=user.id,
+        identifier=identifier,
+        channel=payload.channel,
+        otp_hash=otp_hash,
+        secret_key=SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    _write_password_reset_log(
+        db=db,
+        user_id=user.id,
+        method=method,
+        status="otp_sent",
+        reason=None,
+        token_jti=token_bundle["jti"],
+        ip=ip,
+        user_agent=user_agent,
+    )
+
+    # Delivery is best-effort: the audit row above is already committed, and
+    # this request must succeed regardless of delivery outcome, even if a
+    # notifier implementation violates its own never-raise contract.
+    try:
+        if payload.channel == "email":
+            frontend_base_url = (os.getenv("CP_FRONTEND_BASE_URL") or "https://mapyourcareer.in").rstrip("/")
+            reset_url = f"{frontend_base_url}/reset-password?token={token_bundle['token']}"
+
+            get_notifier().send(
+                to=user.email,
+                template="password_reset",
+                context={
+                    "user_name": user.full_name,
+                    "otp": otp_plain,
+                    "reset_url": reset_url,
+                },
+                locale=DEFAULT_LOCALE,
+            )
+        else:
+            get_sms_notifier().send(
+                to_number=user.phone_number,
+                message=(
+                    f"Your MapYourCareer password reset code is {otp_plain}. "
+                    "It expires in 30 minutes. If you did not request this, ignore this message."
+                ),
+            )
+    except Exception:
+        logger.exception(
+            "Notifier raised despite the never-raise contract; forgot-password "
+            "request still succeeds. user_id=%s reset_id=%s",
+            user.id,
+            token_bundle["jti"],
+        )
+
+    if expose_auth_secrets():
+        return schemas.ForgotPasswordRequestResponse(
+            message=generic_message,
+            expires_at=token_bundle["expires_at"],
+            dev=schemas.PasswordResetDevPayload(token=token_bundle["token"], otp=otp_plain),
+        )
+
+    return schemas.ForgotPasswordRequestResponse(
+        message=generic_message,
+        expires_at=token_bundle["expires_at"],
+    )
+
+
+# -------------------------------------------------------------------
+# Public: forgot-password verify (token + OTP -> new password)
+# -------------------------------------------------------------------
+@router.post("/forgot-password/verify", status_code=status.HTTP_200_OK)
+def forgot_password_verify(
+    payload: schemas.ForgotPasswordVerifyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Decodes/validates the reset token (self-contained JWT, DB never
+    consulted for validity), checks the OTP, and — on success — updates the
+    password. Every branch (success or failure) writes a password_reset_logs
+    row, mirroring verify_consent's exception handling in consent.py.
+    """
+    ip = _get_request_ip(request)
+    user_agent = request.headers.get("user-agent")
+
+    user_id_for_log: Optional[int] = None
+    token_jti_for_log: Optional[str] = None
+    method_for_log = "forgot_email"
+
+    try:
+        claims = decode_and_validate_reset_token(
+            token=payload.token,
+            secret_key=SECRET_KEY,
+            algorithm=ALGORITHM,
+        )
+
+        user_id_for_log = claims["user_id"]
+        token_jti_for_log = claims.get("jti")
+        method_for_log = "forgot_email" if claims["channel"] == "email" else "forgot_mobile"
+
+        # Idempotency: reject replay of an already-completed token
+        if token_jti_for_log:
+            already_completed = (
+                db.query(models.PasswordResetLog)
+                .filter(
+                    models.PasswordResetLog.user_id == user_id_for_log,
+                    models.PasswordResetLog.token_jti == token_jti_for_log,
+                    models.PasswordResetLog.status == "completed",
+                )
+                .first()
+            )
+            if already_completed:
+                _write_password_reset_log(
+                    db=db,
+                    user_id=user_id_for_log,
+                    method=method_for_log,
+                    status="rejected",
+                    reason="already_verified",
+                    token_jti=token_jti_for_log,
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+                raise HTTPException(status_code=409, detail="Already verified")
+
+        verify_otp_against_claim(payload.otp, claims["otp_hash"])
+
+        user = db.query(models.User).filter(models.User.id == user_id_for_log).first()
+        if not user:
+            _write_password_reset_log(
+                db=db,
+                user_id=user_id_for_log,
+                method=method_for_log,
+                status="failed",
+                reason="user_not_found",
+                token_jti=token_jti_for_log,
+                ip=ip,
+                user_agent=user_agent,
+            )
+            raise HTTPException(status_code=400, detail="Invalid token")
+
+        user.hashed_password = get_password_hash(payload.new_password)
+        db.commit()
+
+        _write_password_reset_log(
+            db=db,
+            user_id=user_id_for_log,
+            method=method_for_log,
+            status="completed",
+            reason=None,
+            token_jti=token_jti_for_log,
+            ip=ip,
+            user_agent=user_agent,
+        )
+
+        return {"success": True}
+
+    except ResetTokenExpired:
+        try:
+            p = decode_without_exp_verification(payload.token, SECRET_KEY, ALGORITHM)
+            raw_user_id = p.get("user_id")
+            user_id_for_log = int(raw_user_id) if raw_user_id is not None else None
+            token_jti_for_log = p.get("jti")
+            method_for_log = "forgot_email" if p.get("channel") == "email" else "forgot_mobile"
+        except Exception:
+            pass
+
+        _write_password_reset_log(
+            db=db,
+            user_id=user_id_for_log,
+            method=method_for_log,
+            status="rejected",
+            reason="expired_token",
+            token_jti=token_jti_for_log,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        raise HTTPException(status_code=400, detail="Expired token")
+
+    except ResetOtpInvalid:
+        _write_password_reset_log(
+            db=db,
+            user_id=user_id_for_log,
+            method=method_for_log,
+            status="rejected",
+            reason="invalid_otp",
+            token_jti=token_jti_for_log,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+
+    except ResetTokenInvalid:
+        _write_password_reset_log(
+            db=db,
+            user_id=user_id_for_log,
+            method=method_for_log,
+            status="rejected",
+            reason="invalid_token",
+            token_jti=token_jti_for_log,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        raise HTTPException(status_code=400, detail="Invalid token")
