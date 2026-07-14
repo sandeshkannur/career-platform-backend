@@ -24,6 +24,7 @@
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -54,11 +55,20 @@ from app.utils.password_reset_request import (
     generate_otp,
     hash_otp_sha256,
     create_reset_token_jwt,
+    DEFAULT_RESET_TTL_SECONDS,
 )
 
 router = APIRouter(prefix="/auth", tags=["Password Reset"])
 
 logger = logging.getLogger(__name__)
+
+# Max wrong-OTP attempts allowed against a single reset token (token_jti)
+# before it is locked out, mirroring LoginOtp's attempts>=5 cap in
+# app/auth/auth.py's verify_login_otp(). Counted from password_reset_logs
+# rows rather than a mutable counter column, since every attempt is already
+# written there (status='rejected', reason='invalid_otp') — see
+# forgot_password_verify() below.
+MAX_RESET_OTP_ATTEMPTS = 5
 
 
 # -------------------------------------------------------------------
@@ -188,6 +198,14 @@ def forgot_password_request(
         user = db.query(models.User).filter(models.User.phone_number == identifier).first()
         method = "forgot_mobile"
 
+    # TIMING SIDE-CHANNEL (documented, not fixed here): the found-user branch
+    # below does real work before returning — OTP generation, JWT signing,
+    # a DB write, and a notifier dispatch — while the not-found branch below
+    # returns almost immediately. That gap is a measurable timing signal an
+    # attacker could use to enumerate valid identifiers at scale, even though
+    # the response bodies are now identical (see the expires_at fix above).
+    # Accepted as low-priority given current beta traffic volume; flagged for
+    # future hardening (e.g. constant-time delay padding on this endpoint).
     if not user:
         _write_password_reset_log(
             db=db,
@@ -199,7 +217,18 @@ def forgot_password_request(
             ip=ip,
             user_agent=user_agent,
         )
-        return schemas.ForgotPasswordRequestResponse(message=generic_message)
+        # Synthetic expires_at (no real token/DB row backs it) so this
+        # response is shape-identical to the found-user branch — a null
+        # expires_at here vs. a populated one for known identifiers was
+        # itself a distinguishing signal that broke the "never reveal
+        # whether the identifier exists" guarantee. Reuses the same TTL
+        # constant create_reset_token_jwt() defaults to, so the two branches
+        # can never silently drift apart.
+        synthetic_expires_at = datetime.now(timezone.utc) + timedelta(seconds=DEFAULT_RESET_TTL_SECONDS)
+        return schemas.ForgotPasswordRequestResponse(
+            message=generic_message,
+            expires_at=synthetic_expires_at,
+        )
 
     otp_plain = generate_otp()
     otp_hash = hash_otp_sha256(otp_plain)
@@ -327,6 +356,37 @@ def forgot_password_verify(
                     user_agent=user_agent,
                 )
                 raise HTTPException(status_code=409, detail="Already verified")
+
+        # Attempt cap: count prior wrong-OTP tries logged against this exact
+        # token_jti (each one already wrote a status='rejected'
+        # reason='invalid_otp' row below on failure — that write is itself
+        # the counter, so no separate mutable attempts column is needed).
+        # token_jti is indexed, so this is a cheap, indexed COUNT. Checked
+        # BEFORE verify_otp_against_claim() so a token that has already
+        # exhausted its attempts stays locked out even if the caller finally
+        # supplies the correct OTP.
+        if token_jti_for_log:
+            prior_failed_attempts = (
+                db.query(models.PasswordResetLog)
+                .filter(
+                    models.PasswordResetLog.token_jti == token_jti_for_log,
+                    models.PasswordResetLog.status == "rejected",
+                    models.PasswordResetLog.reason == "invalid_otp",
+                )
+                .count()
+            )
+            if prior_failed_attempts >= MAX_RESET_OTP_ATTEMPTS:
+                _write_password_reset_log(
+                    db=db,
+                    user_id=user_id_for_log,
+                    method=method_for_log,
+                    status="rejected",
+                    reason="max_attempts_exceeded",
+                    token_jti=token_jti_for_log,
+                    ip=ip,
+                    user_agent=user_agent,
+                )
+                raise HTTPException(status_code=429, detail="Too many failed attempts. Request a new reset link.")
 
         verify_otp_against_claim(payload.otp, claims["otp_hash"])
 
