@@ -107,6 +107,95 @@ def _write_password_reset_log(
     db.commit()
 
 
+def _issue_reset_otp(
+    db: Session,
+    user: models.User,
+    channel: str,
+    ip: Optional[str],
+    user_agent: Optional[str],
+    method: str,
+    initiated_by_admin_id: Optional[int] = None,
+) -> dict:
+    """
+    Generates an OTP + reset token for `user`, writes the 'otp_sent' audit
+    row, and dispatches it via the configured notifier for `channel`.
+
+    Shared by forgot_password_request() (public, self-service) and the
+    admin "trigger" endpoint (app/routers/admin/password_reset_admin.py) —
+    one code path for "create a reset token+OTP and send it," so the two
+    callers can never drift apart on how a reset is actually issued. Only
+    the audit `method` (and, for admin-initiated resets,
+    `initiated_by_admin_id`) differs between callers; what the caller does
+    with the returned token/otp (e.g. whether to ever surface them back to
+    the caller) is entirely up to the caller.
+
+    Returns {"token_bundle": {...}, "otp_plain": str} — token_bundle is
+    create_reset_token_jwt()'s return value (token, jti, expires_at).
+    """
+    otp_plain = generate_otp()
+    otp_hash = hash_otp_sha256(otp_plain)
+
+    identifier = user.email if channel == "email" else user.phone_number
+
+    token_bundle = create_reset_token_jwt(
+        user_id=user.id,
+        identifier=identifier,
+        channel=channel,
+        otp_hash=otp_hash,
+        secret_key=SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    _write_password_reset_log(
+        db=db,
+        user_id=user.id,
+        method=method,
+        status="otp_sent",
+        reason=None,
+        token_jti=token_bundle["jti"],
+        ip=ip,
+        user_agent=user_agent,
+        initiated_by_admin_id=initiated_by_admin_id,
+    )
+
+    # Delivery is best-effort: the audit row above is already committed, and
+    # this call must succeed regardless of delivery outcome, even if a
+    # notifier implementation violates its own never-raise contract.
+    try:
+        if channel == "email":
+            frontend_base_url = (os.getenv("CP_FRONTEND_BASE_URL") or "https://mapyourcareer.in").rstrip("/")
+            reset_url = f"{frontend_base_url}/reset-password?token={token_bundle['token']}"
+
+            get_notifier().send(
+                to=user.email,
+                template="password_reset",
+                context={
+                    "user_name": user.full_name,
+                    "otp": otp_plain,
+                    "reset_url": reset_url,
+                },
+                locale=DEFAULT_LOCALE,
+            )
+        else:
+            get_sms_notifier().send(
+                to_number=user.phone_number,
+                message=(
+                    f"Your MapYourCareer password reset code is {otp_plain}. "
+                    "It expires in 30 minutes. If you did not request this, ignore this message."
+                ),
+            )
+    except Exception:
+        logger.exception(
+            "Notifier raised despite the never-raise contract; reset-OTP "
+            "issuance still succeeds. user_id=%s reset_id=%s method=%s",
+            user.id,
+            token_bundle["jti"],
+            method,
+        )
+
+    return {"token_bundle": token_bundle, "otp_plain": otp_plain}
+
+
 # -------------------------------------------------------------------
 # Authenticated self-service: change password
 # -------------------------------------------------------------------
@@ -230,62 +319,16 @@ def forgot_password_request(
             expires_at=synthetic_expires_at,
         )
 
-    otp_plain = generate_otp()
-    otp_hash = hash_otp_sha256(otp_plain)
-
-    token_bundle = create_reset_token_jwt(
-        user_id=user.id,
-        identifier=identifier,
-        channel=payload.channel,
-        otp_hash=otp_hash,
-        secret_key=SECRET_KEY,
-        algorithm=ALGORITHM,
-    )
-
-    _write_password_reset_log(
+    issued = _issue_reset_otp(
         db=db,
-        user_id=user.id,
-        method=method,
-        status="otp_sent",
-        reason=None,
-        token_jti=token_bundle["jti"],
+        user=user,
+        channel=payload.channel,
         ip=ip,
         user_agent=user_agent,
+        method=method,
     )
-
-    # Delivery is best-effort: the audit row above is already committed, and
-    # this request must succeed regardless of delivery outcome, even if a
-    # notifier implementation violates its own never-raise contract.
-    try:
-        if payload.channel == "email":
-            frontend_base_url = (os.getenv("CP_FRONTEND_BASE_URL") or "https://mapyourcareer.in").rstrip("/")
-            reset_url = f"{frontend_base_url}/reset-password?token={token_bundle['token']}"
-
-            get_notifier().send(
-                to=user.email,
-                template="password_reset",
-                context={
-                    "user_name": user.full_name,
-                    "otp": otp_plain,
-                    "reset_url": reset_url,
-                },
-                locale=DEFAULT_LOCALE,
-            )
-        else:
-            get_sms_notifier().send(
-                to_number=user.phone_number,
-                message=(
-                    f"Your MapYourCareer password reset code is {otp_plain}. "
-                    "It expires in 30 minutes. If you did not request this, ignore this message."
-                ),
-            )
-    except Exception:
-        logger.exception(
-            "Notifier raised despite the never-raise contract; forgot-password "
-            "request still succeeds. user_id=%s reset_id=%s",
-            user.id,
-            token_bundle["jti"],
-        )
+    token_bundle = issued["token_bundle"]
+    otp_plain = issued["otp_plain"]
 
     if expose_auth_secrets():
         return schemas.ForgotPasswordRequestResponse(
