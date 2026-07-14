@@ -1062,6 +1062,63 @@ class ForgotPasswordVerifyRequest(BaseModel):
     otp: str = Field(..., min_length=1, max_length=32)
     new_password: str = Field(..., min_length=8)
 
+
+# =========================================================
+# Password reset — admin controls
+# (app/routers/admin/password_reset_admin.py)
+# =========================================================
+
+class AdminResetPasswordTriggerRequest(BaseModel):
+    """
+    Input contract for POST /v1/admin/users/{user_id}/reset-password/trigger.
+
+    Sends the same OTP+token flow as the public forgot-password/request
+    endpoint (via the shared _issue_reset_otp() helper) — the admin never
+    sees the OTP or token, only that it was sent.
+    """
+    channel: Literal["email", "mobile"]
+
+
+class AdminResetPasswordDirectRequest(BaseModel):
+    """
+    Input contract for POST /v1/admin/users/{user_id}/reset-password/direct.
+
+    Bypasses the OTP flow entirely — new_password policy matches
+    ChangePasswordRequest (min_length=8).
+    """
+    new_password: str = Field(..., min_length=8)
+
+
+class PasswordResetLogEntry(BaseModel):
+    """
+    One row of GET /v1/admin/password-reset-logs. Deliberately excludes
+    hashed_password/token/OTP material — password_reset_logs never stores
+    any of that (only token_jti, a non-secret correlation id), but this
+    schema is the enforcement point that keeps it that way if the table
+    ever grows a sensitive column.
+    """
+    id: int
+    user_id: Optional[int] = None
+    user_email: Optional[EmailStr] = None
+    method: str
+    status: str
+    reason: Optional[str] = None
+    initiated_by_admin_id: Optional[int] = None
+    initiated_by_admin_email: Optional[EmailStr] = None
+    token_jti: Optional[str] = None
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PasswordResetLogListResponse(BaseModel):
+    items: List[PasswordResetLogEntry]
+    total: int
+    page: int
+    page_size: int
+
 # =========================================================
 # PR18: Canonical Report Contract (sections-based)
 # - Single deterministic "report document"
